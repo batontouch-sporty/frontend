@@ -1,0 +1,34 @@
+.sporty-header { --header-blue: #2563eb; --header-ink: #1e293b; --header-border: #e2e8f0; color: var(--header-ink); font-size: 14px; line-height: 1.5; }
+.sporty-header, .sporty-header * { box-sizing: border-box; }
+.sporty-header a { color: inherit; text-decoration: none; }
+.sporty-header button { cursor: pointer; font: inherit; }
+.sporty-header :focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+.sporty-header img { flex-shrink: 0; object-fit: contain; }
+.sporty-header-container { width: min(100%, 1152px); padding-inline: 16px; margin-inline: auto; }
+.sporty-header { background: white; border-bottom: 1px solid var(--header-border); }
+.sporty-header-inner { min-height: 64px; display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.sporty-header-brand, .sporty-header-global-search { display: flex; align-items: center; gap: 8px; }
+.sporty-header-brand { white-space: nowrap; }
+.sporty-header-brand img { width: 107px; height: 32px; }
+/* 검색 입력과 제출 버튼을 묶어 작은 화면에서도 버튼이 입력창 옆에 남도록 한다. */
+.sporty-header-search { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 520px; min-width: 0; }
+.sporty-header-global-search { flex: 1; min-width: 0; min-height: 36px; border: 1px solid var(--header-border); border-radius: 99px; padding: 8px 16px; background: #f1f5f9; font-size: 12px; }
+.sporty-header-global-search input { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--header-ink); font: inherit; }
+.sporty-header-global-search input::placeholder { color: #94a3b8; }
+.sporty-header-search-button { flex-shrink: 0; min-height: 36px; padding: 8px 16px; border: 0; border-radius: 99px; background: var(--header-blue); color: white; }
+/* [#54] 컬러 가이드 2의 파랑·흰색 버튼. 회원 메뉴는 검색 영역에 눌려 줄바꿈되지 않는다. */
+.sporty-header-auth-menu { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.sporty-header-auth-menu a { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 8px 14px; border: 1px solid var(--header-border); border-radius: 8px; font-size: 12px; white-space: nowrap; }
+.sporty-header-auth-menu .sporty-header-auth-login { background: white; color: var(--header-ink); }
+.sporty-header-auth-menu .sporty-header-auth-primary { background: var(--header-blue); border-color: var(--header-blue); color: white; }
+@media (max-width: 600px) {
+  .sporty-header-inner { gap: 12px; flex-wrap: wrap; padding-block: 12px; }
+  .sporty-header-search { flex-basis: 100%; max-width: none; order: 1; }
+}
+
+/* 페이지 CSS의 링크/버튼 기본 규칙보다 공통 헤더 스타일을 우선한다. */
+.sporty-header .sporty-header-brand { color: #1e293b; font-size: 24px; font-weight: 700; letter-spacing: -.6px; }
+.sporty-header .sporty-header-auth-menu .sporty-header-auth-primary { background: #2563eb; color: #fff; border: 1px solid #2563eb; }
+.sporty-header .sporty-header-auth-menu .sporty-header-auth-login { color: #1e293b; border: 1px solid #e2e8f0; }
+.sporty-header .sporty-header-search-button { background: #2563eb; color: #fff; }
+.sporty-page-navigation { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 12px; flex-wrap: wrap; }
