@@ -1,0 +1,111 @@
+/* Figma 49:2의 2열 배치. 색상은 COLOR GUID2.MD의 흰색/슬레이트/파랑을 사용한다. */
+.mypage { min-height: 100vh; background: #f8fafc; color: #1e293b; }
+.mypage * { box-sizing: border-box; }
+.mypage button, .mypage input, .mypage select { font: inherit; }
+.mypage button { cursor: pointer; }
+.mypage button:disabled { opacity: .65; cursor: not-allowed; }
+.mypage :focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+.mypage-shell { max-width: 1248px; margin: auto; padding: 28px 48px 64px; }
+.mypage-breadcrumb { display: flex; gap: 12px; font-size: 13px; color: #64748b; margin-bottom: 20px; }
+.mypage-breadcrumb a { color: inherit; text-decoration: none; }
+.mypage-preview { padding: 12px 16px; border: 1px solid #dbeafe; border-radius: 10px; color: #2563eb; background: #eff6ff; font-size: 13px; margin: 0 0 24px; line-height: 1.6; }
+.mypage-layout { display: grid; grid-template-columns: minmax(230px, 1fr) minmax(0, 2.08fr); gap: 32px; align-items: start; }
+.mypage-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 1px 2px #0000000d; }
+.mypage-summary { padding: 28px 24px; }
+.mypage-summary-mark { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #eff6ff; color: #2563eb; font-size: 26px; font-weight: 700; border: 4px solid #f1f5f9; }
+.mypage-summary h2 { font-size: 20px; margin: 18px 0 6px; overflow-wrap: anywhere; }
+.mypage-summary p { font-size: 13px; color: #64748b; margin: 0 0 16px; overflow-wrap: anywhere; }
+.mypage-status { display: inline-block; font-size: 12px; border-radius: 20px; padding: 6px 10px; color: #2563eb; background: #eff6ff; }
+.mypage-summary dl { border-top: 1px solid #e2e8f0; margin: 24px 0 0; padding-top: 8px; }
+.mypage-summary dl div { margin-top: 16px; }
+.mypage dt { font-size: 13px; color: #64748b; }
+.mypage-summary dd { font-size: 14px; line-height: 1.8; margin: 4px 0 0; }
+.mypage-sidebar-note { padding: 24px 16px; font-size: 13px; color: #64748b; line-height: 1.8; }
+.mypage-sidebar-note strong { color: #475569; }
+.mypage-sidebar-note p { margin: 8px 0 0; }
+.mypage-intro { padding: 24px 28px; margin-bottom: 24px; }
+.mypage-intro h1 { font-size: 30px; font-weight: 600; letter-spacing: -1px; margin: 0 0 10px; color: #0f172a; }
+.mypage-intro p { margin: 0; color: #64748b; font-size: 14px; line-height: 1.8; }
+.mypage-section { padding: 28px; margin-bottom: 24px; }
+.mypage-section h2 { display: flex; align-items: center; gap: 12px; font-size: 21px; font-weight: 600; margin: 0 0 24px; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0; }
+.mypage-section h2 img { flex-shrink: 0; }
+.mypage small { font-size: 12px; font-weight: 400; color: #64748b; }
+.mypage-section h2 small { margin-left: auto; }
+.mypage fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.mypage button.mypage-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.mypage-field { margin-top: 24px; }
+.mypage-field label, .mypage-sports legend { display: block; font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+.mypage-field label small, .mypage-sports small { margin-left: 8px; }
+.mypage-field input, .mypage-field select { width: 100%; height: 52px; background: #f1f5f9; color: #1e293b; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0 16px; min-width: 0; }
+.mypage-hint { display: flex; align-items: center; gap: 6px; color: #64748b; font-size: 12px; line-height: 1.6; margin: 10px 0 0; }
+.mypage fieldset.mypage-sports { margin-top: 24px; }
+.mypage-sports > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.mypage-sports label { display: flex; position: relative; align-items: center; gap: 6px; padding: 10px 14px; background: #f1f5f9; border-radius: 24px; font-size: 13px; cursor: pointer; }
+.mypage-sports label.is-selected { background: #1e293b; color: #fff; }
+.mypage-sports input { width: 14px; height: 14px; accent-color: #2563eb; margin: 0; }
+.mypage-region { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mypage-region select { appearance: none; background-image: url('../assets/select.svg'); background-repeat: no-repeat; background-position: right 16px center; padding-right: 36px; }
+.mypage-account { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 0; }
+.mypage-account .mypage-email { grid-column: 1 / -1; }
+.mypage-account dd { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: #f8fafc; border-radius: 10px; padding: 16px; margin: 8px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.mypage-account dd span { flex-shrink: 0; font-size: 11px; color: #64748b; }
+.mypage-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.mypage-actions button { padding: 14px 28px; font-size: 14px; background: #fff; }
+/* 프로필 저장 영역만 적용한다. 탈퇴 모달의 버튼 스타일과 구분한다. */
+.mypage-profile-actions { align-items: center; gap: 10px; padding-top: 4px; }
+.mypage-profile-actions button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; border: 1px solid transparent; border-radius: 12px; font-size: 14px; font-weight: 600; line-height: 20px; transition: background-color .15s, border-color .15s, box-shadow .15s; }
+.mypage-profile-actions .mypage-cancel { min-width: 88px; padding: 12px 24px; color: #64748b; background: #fff; border-color: #e2e8f0; }
+.mypage-profile-actions .mypage-save { min-width: 168px; padding: 12px 28px; box-shadow: 0 1px 2px #0000000d; }
+.mypage-profile-actions button:disabled { box-shadow: none; }
+@media (max-width: 480px) {
+  .mypage-profile-actions { display: grid; grid-template-columns: 1fr 2fr; }
+  .mypage-profile-actions .mypage-cancel, .mypage-profile-actions .mypage-save { width: 100%; min-width: 0; }
+}
+.mypage-error { color: #b91c1c; font-size: 14px; line-height: 1.7; }
+.mypage-message { color: #2563eb; font-size: 14px; line-height: 1.7; }
+.mypage-account-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 36px; padding-top: 24px; border-top: 1px solid #e2e8f0; }
+.mypage-account-actions > button { background: transparent; border: 0; color: #64748b; font-size: 12px; }
+.mypage-footer { background: #fff; border-top: 1px solid #e2e8f0; padding: 28px max(24px, calc((100vw - 1152px) / 2)); display: flex; align-items: center; gap: 24px; }
+.mypage-footer strong { font-size: 22px; }
+.mypage-footer span { color: #64748b; font-size: 12px; }
+.mypage-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.mypage-tabs { display: grid; gap: 8px; margin-top: 20px; }
+.mypage-tabs button { text-align: left; padding: 16px 20px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; color: #475569; }
+.mypage-tabs button[aria-current="page"] { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; font-weight: 600; }
+.mypage-empty { padding: 48px 16px; text-align: center; background: #f8fafc; border-radius: 12px; color: #64748b; line-height: 1.7; }
+.mypage-list-description { color: #64748b; font-size: 14px; }
+.mypage-match-list { padding: 0; margin: 24px 0 0; list-style: none; display: grid; gap: 16px; }
+.mypage-match-list li { border: 1px solid #e2e8f0; border-radius: 12px; transition: border-color .15s, background-color .15s; }
+.mypage-match-link { display: block; padding: 20px; border-radius: 12px; }
+.mypage-match-detail { display: block; margin-top: 16px; color: #2563eb; font-size: 13px; font-weight: 600; }
+.mypage-match-list h2 { margin: 12px 0; padding: 0; border: 0; font-size: 18px; }
+.mypage-match-list a { color: #1e293b; text-decoration: none; }
+.mypage-match-list p { color: #64748b; font-size: 13px; }
+.mypage-withdraw-dialog { width: min(440px, calc(100vw - 32px)); padding: 28px; border: 1px solid #e2e8f0; border-radius: 16px; color: #1e293b; }
+.mypage-withdraw-dialog::backdrop { background: #0f172a80; }
+.mypage-withdraw-dialog h2 { margin: 0 0 16px; }
+.mypage-withdraw-dialog p { font-size: 14px; line-height: 1.8; }
+.mypage-withdraw-dialog label { display: block; font-size: 14px; margin-top: 24px; }
+.mypage-withdraw-dialog input { width: 100%; margin: 10px 0 24px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.mypage-actions button.mypage-danger { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+@media (max-width: 900px) {
+  .mypage-shell { padding: 24px; }
+  .mypage-layout { grid-template-columns: 1fr; gap: 20px; }
+  .mypage-summary { display: grid; grid-template-columns: 64px 1fr; column-gap: 20px; align-items: center; }
+  .mypage-summary-mark { grid-row: 1 / 4; }
+  .mypage-summary h2 { margin: 0 0 6px; }
+  .mypage-summary p { margin: 0 0 10px; }
+  .mypage-status { justify-self: start; }
+  .mypage-summary dl { grid-column: 1 / -1; display: flex; gap: 32px; }
+  .mypage-sidebar-note { display: none; }
+}
+@media (max-width: 480px) {
+  .mypage-shell { padding: 20px 16px 40px; }
+  .mypage-intro, .mypage-section, .mypage-summary { padding: 20px; }
+  .mypage-intro h1 { font-size: 24px; }
+  .mypage-account { gap: 16px 10px; }
+  .mypage-account dd { padding: 12px; font-size: 13px; }
+  .mypage-email dd { flex-wrap: wrap; }
+  .mypage-actions button { padding: 14px 20px; }
+  .mypage-footer { flex-wrap: wrap; gap: 12px; }
+}

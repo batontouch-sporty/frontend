@@ -1,0 +1,12 @@
+/* 회원가입의 네이티브 select 디자인을 재사용한다. 페이지별 배치와 너비는 부모가 관리한다. */
+/* 페이지의 일반 select 규칙보다 우선하여 모든 화면에서 같은 화살표·색상을 유지한다. */
+:root select.sporty-district-select {
+  box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px;
+  border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 36px 10px 12px;
+  background: #f8fafc url("../../features/auth/assets/chevron.svg") no-repeat right 12px center;
+  background-size: 16px; color: #1e293b; font: inherit; appearance: none;
+}
+.sporty-district-select + img { display: none; }
+:root select.sporty-district-select[aria-invalid="true"] { border-color: #b91c1c; }
+select.sporty-district-select:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+select.sporty-district-select:disabled { opacity: .65; cursor: not-allowed; }

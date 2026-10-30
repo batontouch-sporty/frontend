@@ -1,0 +1,9 @@
+.sporty-footer { background: #fff; color: #64748b; border-top: 1px solid #e2e8f0; padding: 32px 0; font-size: 12px; }
+.sporty-footer-inner { box-sizing: border-box; max-width: 1152px; padding-inline: 16px; margin-inline: auto; display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+.sporty-footer .sporty-footer-brand { color: #1e293b; font-size: 22px; font-weight: 700; text-decoration: none; }
+.sporty-footer p { margin: 8px 0; }
+.sporty-footer small { color: #94a3b8; }
+.sporty-footer-labels { display: flex; flex-wrap: wrap; gap: 16px; }
+.sporty-footer :focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+.sporty-message-page { min-height: 100vh; display: flex; flex-direction: column; background: #f8fafc; color: #1e293b; }
+.sporty-message-page > main { flex: 1; padding: 32px 16px; }

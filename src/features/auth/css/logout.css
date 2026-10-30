@@ -1,0 +1,6 @@
+/* COLOR GUID2.MD: 흰색 바탕, 파란 액션, 얇은 회색 테두리와 약한 그림자. */
+.auth-logout { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 8px; max-width: 100%; }
+.auth-logout-button { box-sizing: border-box; min-height: 40px; padding: 9px 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #2563eb; box-shadow: 0 1px 2px #0000000d; font-family: inherit; font-size: 14px; font-weight: 500; line-height: 20px; white-space: nowrap; cursor: pointer; }
+.auth-logout-button:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+.auth-logout-button:disabled { opacity: .65; cursor: not-allowed; }
+.auth-logout-error { margin: 0; max-width: 280px; color: #b91c1c; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
