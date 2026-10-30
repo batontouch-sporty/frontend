@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# PR 자동 리뷰 설정. 리뷰는 참고 의견이고 머지 조건은 CI 통과다.
+language: ko-KR
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!package-lock.json"
+    - "!build/**"
+    - "!public/**"
+  path_instructions:
+    - path: "src/**"
+      instructions: >-
+        API 호출이 Gateway 주소 하나(REACT_APP_API_BASE_URL)와 서비스 경로(/user-service/api/... 등)를 쓰는지,
+        토큰을 localStorage에 넣을 때 만료·갱신 처리가 있는지, API 키나 비밀값이 코드에 없는지 확인한다.
+
+chat:
+  auto_reply: true
