@@ -119,6 +119,47 @@ test('PromQL을 제출해야만 조회하며 빈 vector와 실패를 구분한�
   expect(await within(monitor).findByText('모니터링 접근 권한이 없습니다.')).toBeInTheDocument();
 });
 
+test('A31 여러 시계열의 시각을 KST 날짜 경계로 표시하고 값 문자열을 유지한다', async () => {
+  localStorage.setItem('at', 'token');
+  getCurrentUser.mockResolvedValue(verified());
+  queryRange.mockResolvedValue([
+    { metric: { job: 'a', instance: 'one' }, values: [[1704034799, 'NaN'], [1704034800, '+Inf']] },
+    { metric: { job: 'b' }, values: [[1704034800, '-Inf'], [1704034860, '1.2300']] },
+  ]);
+  show();
+  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: '  test_query  ' } });
+  fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
+  fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
+  const first = await within(monitor).findByRole('table', { name: '시계열 1: instance="one", job="a"' });
+  const second = within(monitor).getByRole('table', { name: '시계열 2: job="b"' });
+  expect(within(first).getByRole('columnheader', { name: '시각 (KST)' })).toBeInTheDocument();
+  expect(within(first).getByRole('columnheader', { name: '값' })).toBeInTheDocument();
+  expect(within(first).getByText('NaN').closest('tr')).toHaveTextContent('2023. 12. 31. 23:59:59 KST');
+  expect(within(first).getByText('+Inf').closest('tr')).toHaveTextContent('2024. 01. 01. 00:00:00 KST');
+  expect(within(second).getByText('-Inf').closest('tr')).toHaveTextContent('2024. 01. 01. 00:00:00 KST');
+  expect(within(second).getByText('1.2300')).toBeInTheDocument();
+  expect(within(first).getByText('+Inf').closest('tr').querySelector('time'))
+    .toHaveAttribute('dateTime', '2023-12-31T15:00:00.000Z');
+  expect(queryRange.mock.calls[0][0].query).toBe('test_query');
+});
+
+test('A31의 빈 result와 values가 빈 시계열을 구분한다', async () => {
+  localStorage.setItem('at', 'token');
+  getCurrentUser.mockResolvedValue(verified());
+  queryRange.mockResolvedValueOnce([]).mockResolvedValueOnce([{ metric: {}, values: [] }]);
+  show();
+  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
+  fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
+  fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
+  expect(await within(monitor).findByText('조회 결과가 없습니다.')).toBeInTheDocument();
+  fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
+  expect(await within(monitor).findByRole('region', { name: '시계열 1: 라벨 없음' })).toBeInTheDocument();
+  expect(within(monitor).getByText('표시할 시점이 없습니다.')).toBeInTheDocument();
+  expect(within(monitor).queryByText('조회 결과가 없습니다.')).not.toBeInTheDocument();
+});
+
 test('화면 이탈 후 늦은 A2 응답은 통계 요청을 시작하지 않는다', async () => {
   localStorage.setItem('at', 'token');
   const pending = deferred();
@@ -204,7 +245,8 @@ test('값이 있는 A30에서 A31로 전환하면 이전 vector를 matrix로 읽
   expect(await within(monitor).findByText('3')).toBeInTheDocument();
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
-  expect(await within(monitor).findByText(/1개 시점/)).toBeInTheDocument();
+  expect(await within(monitor).findByRole('table', { name: '시계열 1: job="a"' })).toBeInTheDocument();
+  expect(within(monitor).getByText('4')).toBeInTheDocument();
 });
 
 test('값이 있는 A31에서 A30으로 전환하면 이전 matrix를 vector로 읽지 않는다', async () => {
@@ -217,7 +259,7 @@ test('값이 있는 A31에서 A30으로 전환하면 이전 matrix를 vector로 
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
-  expect(await within(monitor).findByText(/1개 시점/)).toBeInTheDocument();
+  expect(await within(monitor).findByRole('table', { name: '시계열 1: job="a"' })).toBeInTheDocument();
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'instant' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
   expect(await within(monitor).findByText('3')).toBeInTheDocument();
@@ -236,11 +278,11 @@ test.each(['success', 'error'])('전환 전 요청의 늦은 %s 응답은 현재
   await waitFor(() => expect(queryInstant).toHaveBeenCalledTimes(1));
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
-  expect(await within(monitor).findByText(/1개 시점/)).toBeInTheDocument();
+  expect(await within(monitor).findByRole('table', { name: '시계열 1: job="new"' })).toBeInTheDocument();
   await act(async () => outcome === 'success'
     ? pending.resolve([{ metric: { job: 'old' }, value: [100, '99'] }])
     : pending.reject({ response: { status: 503 } }));
-  expect(within(monitor).getByText(/1개 시점/)).toBeInTheDocument();
+  expect(within(monitor).getByRole('table', { name: '시계열 1: job="new"' })).toBeInTheDocument();
   expect(within(monitor).queryByText('99')).not.toBeInTheDocument();
 });
 
