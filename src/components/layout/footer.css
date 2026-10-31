@@ -1,9 +1,17 @@
-.sporty-footer { background: #fff; color: #64748b; border-top: 1px solid #e2e8f0; padding: 32px 0; font-size: 12px; }
-.sporty-footer-inner { box-sizing: border-box; max-width: 1152px; padding-inline: 16px; margin-inline: auto; display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
-.sporty-footer .sporty-footer-brand { color: #1e293b; font-size: 22px; font-weight: 700; text-decoration: none; }
-.sporty-footer p { margin: 8px 0; }
-.sporty-footer small { color: #94a3b8; }
+.sporty-footer { padding: 32px 0; border-top: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 13px; }
+.sporty-footer-inner { max-width: 1200px; padding-inline: 24px; margin-inline: auto; display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+.sporty-footer .sporty-footer-brand { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; color: var(--ink); font-size: 18px; font-weight: 700; text-decoration: none; }
+.sporty-footer p { margin: 4px 0; }
+.sporty-footer small { color: var(--muted); font-size: 12px; }
 .sporty-footer-labels { display: flex; flex-wrap: wrap; gap: 16px; }
-.sporty-footer :focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
-.sporty-message-page { min-height: 100vh; display: flex; flex-direction: column; background: #f8fafc; color: #1e293b; }
-.sporty-message-page > main { flex: 1; padding: 32px 16px; }
+.sporty-message-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--canvas); color: var(--text); }
+.sporty-message-page > main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 64px 16px; text-align: center; }
+.sporty-message-page > main h1 { margin: 0; font-size: 22px; font-weight: 700; }
+.sporty-message-page > main a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--radius-button); background: var(--ink); color: var(--volt); font-weight: 700; text-decoration: none; transition: background-color var(--motion); }
+.sporty-message-page > main a:active { background: var(--ink-raised); }
+@media (hover: hover) {
+  .sporty-message-page > main a:hover { background: var(--ink-raised); }
+}
+@media (max-width: 599.98px) {
+  .sporty-footer-inner { padding-inline: 16px; }
+}

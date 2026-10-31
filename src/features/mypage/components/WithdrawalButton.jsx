@@ -35,8 +35,8 @@ export default function WithdrawalButton() {
     }).catch(requestError => {
       const status = requestError.response?.status;
       setError(status === 400 ? '비밀번호를 확인해주세요.' : status === 401
-        ? '로그인이 만료되었습니다. 다시 로그인한 후 시도해주세요.'
-        : '회원탈퇴를 완료하지 못했습니다. 잠시 후 다시 시도해주세요.');
+        ? '로그인이 만료됐어요. 다시 로그인한 후 시도해주세요.'
+        : '회원탈퇴를 완료하지 못했어요. 잠시 후 다시 시도해주세요.');
     }).finally(() => setPending(false));
   };
 
@@ -44,7 +44,7 @@ export default function WithdrawalButton() {
     <button type="button" ref={trigger} className="mypage-withdraw-trigger" onClick={() => setOpen(true)}>회원탈퇴</button>
     {open && <dialog ref={dialog} className="mypage-withdraw-dialog" aria-labelledby="withdraw-title" onCancel={e => { e.preventDefault(); closeHandler(); }}>
       <h2 id="withdraw-title">회원탈퇴</h2>
-      <p>탈퇴하면 계정 이용이 중단되고 로그아웃됩니다.<br />계속하려면 현재 비밀번호를 입력해주세요.</p>
+      <p>탈퇴하면 계정을 쓸 수 없고 로그아웃돼요.<br />계속하려면 현재 비밀번호를 입력해주세요.</p>
       <form onSubmit={withdrawalHandler} aria-busy={pending}>
         <label htmlFor="withdraw-password">현재 비밀번호</label>
         <input id="withdraw-password" type="password" autoComplete="current-password" autoFocus value={password} disabled={pending} onChange={e => setPassword(e.target.value)} />

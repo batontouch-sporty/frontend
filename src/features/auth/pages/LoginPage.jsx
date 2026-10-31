@@ -3,14 +3,8 @@ import Header from '../../../components/layout/Header';
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
-import ball from '../assets/login/ball.svg';
-import emailIcon from '../assets/login/email.svg';
-import info from '../assets/login/info.svg';
-import lock from '../assets/login/lock.svg';
-import visibility from '../assets/login/visibility.svg';
-import shield from '../assets/login/shield.svg';
-import submit from '../assets/login/submit.svg';
-import signup from '../assets/login/signup.svg';
+import visibilityOff from '../assets/visibility.svg';
+import visibilityOn from '../assets/login/visibility.svg';
 import '../css/login.css';
 
 const LoginPage = () => {
@@ -83,7 +77,7 @@ const LoginPage = () => {
           localStorage.removeItem('at');
           localStorage.removeItem('rt');
           localStorage.removeItem('userId');
-          throw new Error('로그인 정보를 저장하지 못했습니다. 브라우저 저장소 설정을 확인해주세요.');
+          throw new Error('로그인 정보를 저장하지 못했어요. 브라우저 저장소 설정을 확인해주세요.');
         }
         const destination = getReturnPath();
         moveUrl(destination, { replace: true, state: destination !== '/' && location.state?.from ? location.state?.fromState : undefined });
@@ -93,8 +87,8 @@ const LoginPage = () => {
         if (error.response?.status === 401) setErrors({ form: '이메일 또는 비밀번호를 확인해주세요.' });
         else if (typeof message === 'string' && message.trim()) setErrors({ form: message });
         else if (error.response?.status === 400) setErrors({ form: '입력한 이메일과 비밀번호 형식을 확인해주세요.' });
-        else if (error.request || error.response) setErrors({ form: '로그인하지 못했습니다. 연결 상태를 확인하고 다시 시도해주세요.' });
-        else setErrors({ form: error.message || '로그인하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+        else if (error.request || error.response) setErrors({ form: '로그인하지 못했어요. 연결 상태를 확인하고 다시 시도해주세요.' });
+        else setErrors({ form: error.message || '로그인하지 못했어요. 잠시 후 다시 시도해주세요.' });
       })
       .finally(() => {
         submitting.current = false;
@@ -102,38 +96,44 @@ const LoginPage = () => {
       });
   };
 
+  const returning = getReturnPath() !== '/';
+
   return (
     <div className="login-page">
       <Header />
+      {/* 소개에는 포커스 요소가 없어 폼을 DOM 앞에 두고, 화면에서만 소개를 왼쪽 또는 위로 옮긴다. */}
       <main className="login-main">
-        {/* Figma 카드 구조를 유지하고 DB 컬럼/해시 설명은 사용자 화면에서 제외한다. */}
         <section className="login-card" aria-labelledby="login-title">
-          <div className="login-body">
-            <div className="login-intro"><span className="login-symbol"><img src={ball} alt="" /></span><strong>Sporty</strong><h1 id="login-title">로그인</h1><p>생활체육 매칭 플랫폼 Sporty에 오신 것을 환영합니다.</p></div>
-            {/* [USR-01 → USR-02] 회원가입 페이지가 전달하는 완료 상태를 안내한다. */}
-            {location.state?.signUpComplete && <p className="login-success" role="status">회원가입이 완료되었습니다. 로그인해주세요.</p>}
-            <form onSubmit={loginHandler} noValidate aria-busy={pending}>
-              <fieldset className="login-fields" disabled={pending}>
-                <legend className="login-sr-only">로그인 정보</legend>
-                <div className="login-field">
-                  <label htmlFor="login-email">이메일 <span aria-hidden="true">*</span></label>
-                  <div className="login-input-wrap"><img src={emailIcon} alt="" className="login-input-icon" /><input id="login-email" type="email" name="email" placeholder="이메일 주소를 입력하세요" autoComplete="username" maxLength={50} value={form.email} onChange={keyHandler} required aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? 'login-email-error' : 'login-email-help'} /></div>
-                  {errors.email && <p id="login-email-error" className="login-error" role="alert">{errors.email}</p>}
-                  <p id="login-email-help" className="login-help"><img src={info} alt="" />가입한 계정의 이메일을 입력해주세요.</p>
-                </div>
-                <div className="login-field">
-                  <label htmlFor="login-password">비밀번호 <span aria-hidden="true">*</span></label>
-                  <div className="login-input-wrap"><img src={lock} alt="" className="login-input-icon" /><input id="login-password" type={showPassword ? 'text' : 'password'} name="password" placeholder="비밀번호를 입력하세요" autoComplete="current-password" maxLength={20} value={form.password} onChange={keyHandler} required aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? 'login-password-error' : 'login-password-help'} /><button type="button" className="login-visibility" aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'} aria-pressed={showPassword} onClick={() => setShowPassword(previous => !previous)}><img src={visibility} alt="" /></button></div>
-                  {errors.password && <p id="login-password-error" className="login-error" role="alert">{errors.password}</p>}
-                  <p id="login-password-help" className="login-help"><img src={shield} alt="" />가입 시 설정한 8~20자의 비밀번호를 입력해주세요.</p>
-                </div>
-                <div className="login-feedback" aria-live="polite">{errors.form && <p className="login-error" role="alert">{errors.form}</p>}</div>
-                <button className="login-submit" type="submit">{pending ? '로그인 중...' : '로그인'}<img src={submit} alt="" /></button>
-              </fieldset>
-            </form>
-          </div>
-          <div className="login-card-footer"><span>아직 회원이 아니신가요?</span><Link to="/signup">회원가입<img src={signup} alt="" /></Link></div>
+          <div className="login-intro"><h1 id="login-title">로그인</h1><p>{returning ? '로그인하면 보던 화면으로 돌아가요.' : '이메일과 비밀번호를 입력해주세요.'}</p></div>
+          {/* [USR-01 → USR-02] 회원가입 페이지가 전달하는 완료 상태를 안내한다. */}
+          {location.state?.signUpComplete && <p className="login-success" role="status">회원가입을 마쳤어요. 로그인해주세요.</p>}
+          <form onSubmit={loginHandler} noValidate aria-busy={pending}>
+            <fieldset className="login-fields" disabled={pending}>
+              <legend className="login-sr-only">로그인 정보</legend>
+              <div className="login-field">
+                <label htmlFor="login-email">이메일 <span aria-hidden="true">*</span></label>
+                <div className="login-input-wrap"><input id="login-email" type="email" name="email" placeholder="이메일 주소를 입력하세요" autoComplete="username" maxLength={50} value={form.email} onChange={keyHandler} required aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? 'login-email-error' : 'login-email-help'} /></div>
+                {errors.email && <p id="login-email-error" className="login-error" role="alert">{errors.email}</p>}
+                {!errors.email && <p id="login-email-help" className="login-help">가입할 때 쓴 이메일이에요.</p>}
+              </div>
+              <div className="login-field">
+                <label htmlFor="login-password">비밀번호 <span aria-hidden="true">*</span></label>
+                <div className="login-input-wrap"><input id="login-password" type={showPassword ? 'text' : 'password'} name="password" placeholder="비밀번호를 입력하세요" autoComplete="current-password" maxLength={20} value={form.password} onChange={keyHandler} required aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? 'login-password-error' : 'login-password-help'} /><button type="button" className="login-visibility" aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'} onClick={() => setShowPassword(previous => !previous)}><img src={showPassword ? visibilityOn : visibilityOff} alt="" /></button></div>
+                {errors.password && <p id="login-password-error" className="login-error" role="alert">{errors.password}</p>}
+                {!errors.password && <p id="login-password-help" className="login-help">가입할 때 정한 8~20자 비밀번호예요.</p>}
+              </div>
+              <div className="login-feedback" aria-live="polite">{errors.form && <p className="login-error" role="alert">{errors.form}</p>}</div>
+              <button className="login-submit" type="submit">{pending ? '로그인 중...' : '로그인'}</button>
+            </fieldset>
+          </form>
+          <p className="login-signup"><span>아직 회원이 아닌가요?</span><Link to="/signup">회원가입</Link></p>
         </section>
+        <aside className="login-pitch" aria-label="서비스 소개">
+          <div>
+            <h2>서울 우리 동네에서<br />같이 운동해요</h2>
+            <p>자치구와 종목으로 생활체육 매치를 찾고,<br />마음에 들면 바로 참가해요.</p>
+          </div>
+        </aside>
       </main>
       {/* 약관/고객센터 담당자가 실제 라우트 확정 후 Link로 연결한다. */}
       <Footer />

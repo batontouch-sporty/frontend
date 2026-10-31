@@ -17,8 +17,9 @@ export default function ReservationDateStrip({ facility, selectedKey, onSelect }
             onClick={() => onSelect(day)}
           >
             <span className="fd-day-label">{day.label}</span>
-            <strong>{day.day}<small>({day.weekday})</small></strong>
-            <span className="fd-day-state">{day.state}</span>
+            <strong>{day.day}</strong>
+            {/* 좁은 칸에 들어가도록 줄여 쓴다. 전체 문구는 선택한 날짜 줄에 나온다. */}
+            <span className="fd-day-state">{day.state.replace('접수', '')}</span>
           </button>
         );
       })}

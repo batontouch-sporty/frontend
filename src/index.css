@@ -1,13 +1,55 @@
+:root {
+  --ink: #141a22;
+  --ink-raised: #232b36;
+  --on-ink: #ffffff;
+  --on-ink-muted: #aeb7c2;
+  --volt: #c8f031;
+  --volt-press: #b4dc1e;
+  --volt-tint: #f3fbd3;
+  --canvas: #f4f6f8;
+  --surface: #ffffff;
+  --line: #e3e7ec;
+  --line-strong: #c9d0d8;
+  --line-input: #7c8795;
+  --text: #141a22;
+  --text-secondary: #414b59;
+  --muted: #5b6675;
+  --danger: #c8281e;
+  --danger-tint: #fdecea;
+  --success: #15803d;
+  --success-tint: #e9f6ed;
+  --warning: #9a5b00;
+  --warning-tint: #fff4e0;
+  --radius-field: 8px;
+  --radius-button: 12px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+  --motion: 150ms ease-out;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: keep-all;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+button, input, select, textarea { font: inherit; }
+button { transition: background-color var(--motion), border-color var(--motion), color var(--motion); }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }

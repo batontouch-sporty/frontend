@@ -1,5 +1,6 @@
 import DistrictSelect from '../../../components/common/DistrictSelect';
 import { useState } from 'react';
+import { SKILL_LABELS } from '../../../constants/skillLevels';
 import { sports } from '../../auth/data/signUpOptions';
 import '../css/main.css';
 
@@ -7,7 +8,7 @@ import '../css/main.css';
 // 초기값은 AI가 추출한 조건(toCriteria 결과)이고, AI 검색 전에는 모두 빈 값이다.
 // 적용하면 onApply(수정한 조건)를 호출하고 재검색은 MainPage가 한다.
 const GENDERS = [['MALE', '남성'], ['FEMALE', '여성'], ['MIXED', '혼성']];
-const SKILLS = [['BEGINNER', '초급'], ['INTERMEDIATE', '중급'], ['ADVANCED', '고급']];
+const SKILLS = Object.entries(SKILL_LABELS);
 const STATUSES = [['RECRUITING', '모집중'], ['CLOSED', '마감']];
 
 const AIConditionEditor = ({ initialCriteria, onApply, onCancel, pending = false, error = '' }) => {
@@ -18,7 +19,7 @@ const AIConditionEditor = ({ initialCriteria, onApply, onCancel, pending = false
   const submitHandler = event => {
     event.preventDefault();
     if (criteria.startDate && criteria.endDate && criteria.endDate < criteria.startDate) {
-      setInvalid('종료일은 시작일과 같거나 이후여야 합니다.');
+      setInvalid('종료일은 시작일과 같거나 이후여야 해요.');
       return;
     }
     setInvalid('');
@@ -52,10 +53,9 @@ const AIConditionEditor = ({ initialCriteria, onApply, onCancel, pending = false
         {select('status', '모집 상태', STATUSES)}
       </div>
       {(invalid || error) && <p role="alert">{invalid || error}</p>}
-      {/* 버튼 모양은 AI 검색 버튼(ms-search-actions, ms-primary)과 맞춘다. */}
-      <div className="ms-search-actions ms-editor-actions">
-        <button className="ms-primary" type="button" onClick={onCancel} disabled={pending}>취소</button>
-        <button className="ms-primary" type="submit" disabled={pending}>{pending ? '찾는 중…' : '이 조건으로 다시 찾기'}</button>
+      <div className="ms-editor-actions">
+        <button type="button" onClick={onCancel} disabled={pending}>취소</button>
+        <button type="submit" disabled={pending}>{pending ? '찾는 중…' : '이 조건으로 다시 찾기'}</button>
       </div>
     </form>
   );

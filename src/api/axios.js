@@ -30,11 +30,12 @@ api.interceptors.request.use(config => {
 });
 
 // [USR-05] 재발급 인증 실패 시에만 세션을 정리
-const expireSession = () => {
+const expireSession = ({ skipSessionRedirect } = {}) => {
   localStorage.removeItem('at');
   localStorage.removeItem('rt');
   localStorage.removeItem('userId');
-  if (window.location.pathname !== '/login') {
+  // 공개 페이지의 부가 조회는 세션만 정리하고 화면을 유지한다.
+  if (!skipSessionRedirect && window.location.pathname !== '/login') {
     const from = window.location.pathname + window.location.search;
     window.location.assign('/login?redirect=' + encodeURIComponent(from));
   }
@@ -55,7 +56,7 @@ api.interceptors.response.use(
 
     const refreshToken = localStorage.getItem('rt');
     if (!refreshToken) {
-      expireSession();
+      expireSession(originalRequest);
       return Promise.reject(error);
     }
     originalRequest._retry = true;
@@ -65,7 +66,7 @@ api.interceptors.response.use(
       .catch(refreshError => {
         if (refreshError.response?.data?.code === 'INVALID_REFRESH_TOKEN'
             && localStorage.getItem('rt') === refreshToken) {
-          expireSession();
+          expireSession(originalRequest);
         }
         return Promise.reject(refreshError);
       })

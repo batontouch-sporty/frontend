@@ -63,9 +63,9 @@ test('상세 화면은 예약에 필요한 정보와 날짜를 보여준다', as
   expect(screen.getByText('테니스장')).toBeInTheDocument();
   expect(screen.getByText('접수중')).toBeInTheDocument();
   expect(screen.getByText('유료')).toBeInTheDocument();
-  expect(screen.getByText('장소 성동구 응봉공원')).toBeInTheDocument();
-  expect(screen.getByText('운영시간 07:00 ~ 19:00')).toBeInTheDocument();
-  expect(screen.getByText('연락처 02-2293-7646')).toBeInTheDocument();
+  expect(screen.getByText('성동구 응봉공원')).toBeInTheDocument();
+  expect(screen.getByText('07:00 ~ 19:00')).toBeInTheDocument();
+  expect(screen.getByText('02-2293-7646')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: /날짜 선택/ })).toBeInTheDocument();
   expect(screen.getByRole('option', { name: /오늘/ })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText(/코트별 실시간 대관 현황은/)).toBeInTheDocument();
@@ -90,7 +90,7 @@ test('로그인 후 상세의 매치 생성은 해당 시설이 선택된 개설
 
 test('잘못된 형식의 서비스 ID는 API를 호출하지 않는다', async () => {
   renderPage('/facilities/abc');
-  expect(await screen.findByRole('alert')).toHaveTextContent('잘못된 서비스 ID입니다.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('시설 주소가 올바르지 않아요.');
   expect(fetchFacility).not.toHaveBeenCalled();
 });
 

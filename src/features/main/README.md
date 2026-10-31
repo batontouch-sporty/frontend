@@ -45,8 +45,8 @@
 | score | 0~100 숫자, 확장 필드 가정 | 적합도와 정렬, 없으면 배지 숨김 |
 | distance | 숫자, 확장 필드 가정 | 거리순 정렬, 모든 항목의 거리 단위 통일 필요 |
 
-6. **state 갱신 → 화면 전달**: `setSearchResults({ conditions, matches })`로 두 배열을 함께 저장합니다. conditions는 `AIConditionSummary`에, matches는 `MatchListSection`에 props로 전달합니다. MatchListSection이 배열을 순회해 각 객체를 `MatchCard`의 match props에 넣습니다. 예시는 3개지만 실제 검색 결과를 3개로 자르지는 않습니다.
-7. **카드 인원 표시**: MatchCard가 currentParticipant/maxParticipant로 `참여 인원 7/12명`과 막대 길이를 함께 계산합니다. 25% 미만 파랑, 25~75% 초록, 75% 초과 빨강입니다. 인원 누락/비정상 값은 정보 없음 및 막대 숨김, 정원 초과는 실제 인원 표시 및 길이 100% 제한입니다. 금액과 잔디 종류는 표시하지 않습니다.
+6. **state 갱신 → 화면 전달**: `setSearchResults({ conditions, matches })`로 두 배열을 함께 저장합니다. conditions는 `AIConditionSummary`에, matches는 `MatchListSection`에 props로 전달합니다. MatchListSection이 배열을 순회해 각 객체를 `MatchRow`의 match props에 넣습니다. 예시는 3개지만 실제 검색 결과를 3개로 자르지는 않습니다.
+7. **행 인원 표시**: MatchRow가 currentParticipant/maxParticipant로 `7/12명`과 막대 길이를 함께 계산합니다. 25% 미만 파랑, 25~75% 초록, 75% 초과 빨강입니다. 인원 누락/비정상 값은 정보 없음 및 막대 숨김, 정원 초과는 실제 인원 표시 및 길이 100% 제한입니다. 금액과 잔디 종류는 표시하지 않습니다.
 8. **검색 상태/오류**: searchStatus는 idle/loading/success/error입니다. 시작 시 이전 결과를 비우고 로딩 중 입력/버튼을 잠급니다. 401/500의 message(문자열)를 표시하며 없으면 기본 안내를 사용합니다. 빈 matches 배열은 결과 없음으로 표시합니다. 실패를 빈 결과로 취급하지 않습니다.
 9. **정렬/추가 연결**: `MatchListSection.jsx`의 sort는 score/startAt/distance이며 현재 받은 배열만 정렬합니다. `onEdit`는 조건 편집 기능, `onJoin(match)`는 참가 신청 기능 연결점이며 미구현입니다. 참가 API와 서버 정렬은 별도 연결이 필요합니다.
 10. **담당자가 수정할 순서**: MainPage.searchHandler의 요청 필드 확정 → toConditionSummary/toMatchCard의 응답 필드 매핑 → 실제 서버로 맞춤 조건과 카드 동시 표시 확인 → 빈 결과/401/500 확인. API 주소/토큰 헤더는 공통 `api/axios.js`에서 관리합니다.
@@ -84,11 +84,11 @@
 2. **현재 상태**: AppRoutes의 해당 경로는 안내 문구만 있습니다. EM-02 조회 API의 주소·요청 파라미터·응답 형식은 아직 전달받지 않아 구현하지 않았습니다. AI-02 결과와 전체 목록 조회는 별개입니다.
 3. **전체 목록 담당자 작업**: 실제 목록 페이지를 만들고 라우트에 연결합니다. 페이지 안에 loadData 또는 목록 조회 핸들러를 만들고, 목록/로딩/오류 state를 정의한 뒤 확정된 API를 호출합니다. 최초 조회는 useEffect에서 호출할 수 있습니다.
 4. **필요한 데이터 협의**: 카드를 재사용하려면 AI-02 표의 제목·종목·실력·일정·위치·현재/최대 인원·유무료 정보가 필요합니다. 적합도는 전체 목록에서 제공하지 않아도 됩니다. 페이지 처리를 적용한다면 목록 배열, 전체 개수(정수), 페이지 번호/크기(정수)의 계약도 별도 확정합니다. 아직 필드명을 정하지 않았습니다.
-5. **화면 표시**: 응답을 카드 모델로 변환해 MatchListSection/MatchCard를 재사용할 수 있습니다. 다만 MatchListSection 제목은 현재 '분석된 조건과 일치하는 매치'이므로 전체 목록용 제목으로 분리/확장해야 합니다. 서버 페이지 처리를 쓰면 현재 프론트 정렬이 전체 결과가 아닌 받은 페이지 안에서만 동작한다는 점도 처리합니다.
+5. **화면 표시**: 응답을 카드 모델로 변환해 MatchListSection/MatchRow를 재사용할 수 있습니다. 다만 MatchListSection 제목은 현재 '분석된 조건과 일치하는 매치'이므로 전체 목록용 제목으로 분리/확장해야 합니다. 서버 페이지 처리를 쓰면 현재 프론트 정렬이 전체 결과가 아닌 받은 페이지 안에서만 동작한다는 점도 처리합니다.
 6. **하단 숫자**: 현재 메인 하단의 N건은 메인에 표시 중인 예시/AI 검색 결과 개수입니다. 서버의 전체 매치 수가 아닙니다. 전체 개수 응답이 확정되면 별도 totalCount state로 연결하고 표시 문구를 맞춥니다.
 
 ## state가 없는 컴포넌트
 
-AIConditionSummary와 MatchCard는 받은 props로 표시값을 계산합니다. MatchCreatePage는 현재 라우터 state의 facility만 폼에 전달하며, aiDraft 읽기와 자동 입력 연결은 담당자의 후속 작업입니다. 별도 useState가 없으며 API 응답 저장은 MainPage, 편집 중 폼 값은 MatchForm에서 담당합니다. 각 useState/useRef 바로 위의 기능 ID 주석으로 소유 기능을 찾을 수 있습니다.
+AIConditionSummary와 MatchRow는 받은 props로 표시값을 계산합니다. MatchCreatePage는 현재 라우터 state의 facility만 폼에 전달하며, aiDraft 읽기와 자동 입력 연결은 담당자의 후속 작업입니다. 별도 useState가 없으며 API 응답 저장은 MainPage, 편집 중 폼 값은 MatchForm에서 담당합니다. 각 useState/useRef 바로 위의 기능 ID 주석으로 소유 기능을 찾을 수 있습니다.
 
 카드 날짜는 utils/matchDisplay.js에서 한국 날짜 기준의 XX월 XX일 X요일로 표시합니다. 시간대가 포함된 ISO 값은 한국 시간으로 변환합니다. 장소는 region + facilityName을 사용하며 실제 백엔드 필드명이 다르면 toMatchCard의 매핑을 수정합니다. 역세권 설명은 표시하지 않습니다.

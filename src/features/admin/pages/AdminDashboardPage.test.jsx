@@ -54,15 +54,15 @@ test('A2 확인 중과 USER·역할 누락 시 통계를 호출하지 않는다'
   const pending = deferred();
   getCurrentUser.mockReturnValue(pending.promise);
   const view = show();
-  expect(screen.getByText('관리자 권한을 확인하는 중입니다.')).toBeInTheDocument();
+  expect(screen.getByText('관리자 권한을 확인하는 중이에요.')).toBeInTheDocument();
   expect(getUserStats).not.toHaveBeenCalled();
   await act(async () => pending.resolve(verified('USER')));
-  expect(screen.getByText('관리자 접근 권한이 없습니다.')).toBeInTheDocument();
+  expect(screen.getByText('관리자 접근 권한이 없어요.')).toBeInTheDocument();
   expect(getMatchStats).not.toHaveBeenCalled();
   view.unmount();
   getCurrentUser.mockResolvedValue({ user: {}, authorization: 'Bearer token', retried: false });
   show();
-  expect(await screen.findByText('관리자 접근 권한이 없습니다.')).toBeInTheDocument();
+  expect(await screen.findByText('관리자 접근 권한이 없어요.')).toBeInTheDocument();
   expect(getUserStats).not.toHaveBeenCalled();
 });
 
@@ -71,11 +71,14 @@ test('ADMIN이면 각 영역을 요청하고 실제 0건을 표시하며 한 영
   getCurrentUser.mockResolvedValue(verified());
   getMatchStats.mockRejectedValue({ response: { status: 503 } });
   show();
-  const users = await screen.findByRole('region', { name: '회원 누적 통계' });
-  await waitFor(() => expect(within(users).getByText('활성 회원')).toBeInTheDocument());
+  const users = await screen.findByRole('region', { name: '탈퇴 처리' });
+  await waitFor(() => expect(within(users).getByText('탈퇴 요청')).toBeInTheDocument());
   expect(within(users).getAllByText('0').length).toBeGreaterThan(0);
-  const matches = screen.getByRole('region', { name: '매칭 누적 통계' });
-  expect(await within(matches).findByText('조회에 실패했습니다. 잠시 후 다시 시도해주세요.')).toBeInTheDocument();
+  const kpis = screen.getByRole('region', { name: '핵심 지표' });
+  expect(within(kpis).getByText('활성 회원').nextSibling).toHaveTextContent('0');
+  const matches = screen.getByRole('region', { name: '매치 상태' });
+  expect(await within(matches).findByText('조회하지 못했어요. 잠시 후 다시 시도해주세요.')).toBeInTheDocument();
+  expect(within(kpis).getByText('전체 매치').nextSibling).toHaveTextContent('-');
   expect(getUserStats).toHaveBeenCalledTimes(1);
   expect(getMatchStats).toHaveBeenCalledTimes(1);
   expect(queryInstant).not.toHaveBeenCalled();
@@ -83,8 +86,8 @@ test('ADMIN이면 각 영역을 요청하고 실제 0건을 표시하며 한 영
 
 test.each([
   [401, '/login from:/admin/dashboard?tab=one#top'],
-  [403, '관리자 접근 권한이 없습니다.'],
-  [404, '회원 조회 연동을 확인할 수 없습니다. API 경로와 서비스 준비 상태를 확인해주세요.'],
+  [403, '관리자 접근 권한이 없어요.'],
+  [404, '회원 조회 연동을 확인할 수 없어요. API 경로와 서비스 준비 상태를 확인해주세요.'],
 ])('A2의 %s 응답을 구분한다', async (status, message) => {
   localStorage.setItem('at', 'token');
   getCurrentUser.mockRejectedValue({ response: { status } });
@@ -97,11 +100,11 @@ test('A2 네트워크 및 refresh 경로 실패는 ADMIN 성공이 아니다', a
   localStorage.setItem('at', 'token');
   getCurrentUser.mockRejectedValue({ request: {}, message: 'Network Error' });
   const view = show();
-  expect(await screen.findByText('관리자 권한을 확인하지 못했습니다. 연결 상태를 확인해주세요.')).toBeInTheDocument();
+  expect(await screen.findByText('관리자 권한을 확인하지 못했어요. 연결 상태를 확인해주세요.')).toBeInTheDocument();
   view.unmount();
   getCurrentUser.mockRejectedValue({ response: { status: 404 } });
   show();
-  expect(await screen.findByText('회원 조회 연동을 확인할 수 없습니다. API 경로와 서비스 준비 상태를 확인해주세요.')).toBeInTheDocument();
+  expect(await screen.findByText('회원 조회 연동을 확인할 수 없어요. API 경로와 서비스 준비 상태를 확인해주세요.')).toBeInTheDocument();
   expect(getUserStats).not.toHaveBeenCalled();
 });
 
@@ -114,9 +117,9 @@ test('PromQL을 제출해야만 조회하며 빈 vector와 실패를 구분한�
   expect(queryInstant).not.toHaveBeenCalled();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
-  expect(await within(monitor).findByText('조회 결과가 없습니다.')).toBeInTheDocument();
+  expect(await within(monitor).findByText('조회 결과가 없어요.')).toBeInTheDocument();
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
-  expect(await within(monitor).findByText('모니터링 접근 권한이 없습니다.')).toBeInTheDocument();
+  expect(await within(monitor).findByText('모니터링 접근 권한이 없어요.')).toBeInTheDocument();
 });
 
 test('A31 여러 시계열의 시각을 KST 날짜 경계로 표시하고 값 문자열을 유지한다', async () => {
@@ -153,11 +156,11 @@ test('A31의 빈 result와 values가 빈 시계열을 구분한다', async () =>
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
-  expect(await within(monitor).findByText('조회 결과가 없습니다.')).toBeInTheDocument();
+  expect(await within(monitor).findByText('조회 결과가 없어요.')).toBeInTheDocument();
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
   expect(await within(monitor).findByRole('region', { name: '시계열 1: 라벨 없음' })).toBeInTheDocument();
-  expect(within(monitor).getByText('표시할 시점이 없습니다.')).toBeInTheDocument();
-  expect(within(monitor).queryByText('조회 결과가 없습니다.')).not.toBeInTheDocument();
+  expect(within(monitor).getByText('표시할 시점이 없어요.')).toBeInTheDocument();
+  expect(within(monitor).queryByText('조회 결과가 없어요.')).not.toBeInTheDocument();
 });
 
 test('화면 이탈 후 늦은 A2 응답은 통계 요청을 시작하지 않는다', async () => {
@@ -231,6 +234,29 @@ test('A2 대기 중 다른 계정으로 전환하면 이전 ADMIN 응답은 통�
   });
   expect(getUserStats).not.toHaveBeenCalled();
   expect(getMatchStats).not.toHaveBeenCalled();
+});
+
+test('시계열은 유한한 값을 선으로 잇고 NaN·Inf 시점에서 끊으며 값 목록을 유지한다', async () => {
+  localStorage.setItem('at', 'token');
+  getCurrentUser.mockResolvedValue(verified());
+  queryRange.mockResolvedValue([
+    { metric: { job: 'a' }, values: [[100, '1'], [160, '3'], [220, 'NaN'], [280, '2'], [340, '+Inf']] },
+    { metric: { job: 'b' }, values: [[100, 'NaN']] },
+    { metric: { job: 'c' }, values: [[100, '5']] },
+  ]);
+  show();
+  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
+  fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
+  fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
+  const chart = await within(monitor).findByRole('img', { name: '시계열 1 추이 그래프' });
+  // [100, 160]이 한 선, [280]이 떨어진 점이다. 시간축 양 끝은 값이 있는 시점 기준이다.
+  expect(chart.querySelector('path').getAttribute('d')).toBe('M0.0 152.0 h0 L213.3 8.0 M640.0 80.0 h0');
+  expect(within(monitor).getByText('최저 1 · 최고 3')).toBeInTheDocument();
+  expect(within(monitor).getByRole('table', { name: '시계열 1: job="a"' })).toHaveTextContent('+Inf');
+  expect(within(monitor).queryByRole('img', { name: '시계열 2 추이 그래프' })).not.toBeInTheDocument();
+  expect(within(monitor).getByRole('table', { name: '시계열 2: job="b"' })).toBeInTheDocument();
+  expect(within(monitor).getByRole('img', { name: '시계열 3 추이 그래프' }).querySelector('path').getAttribute('d')).toBe('M320.0 80.0 h0');
 });
 
 test('값이 있는 A30에서 A31로 전환하면 이전 vector를 matrix로 읽지 않는다', async () => {
@@ -347,10 +373,10 @@ test('ADMIN 표시 뒤 다른 탭 USER 전환은 즉시 숨기고 A2 재검증 �
   });
   expect(screen.queryByText('42')).not.toBeInTheDocument();
   expect(screen.queryByText('99')).not.toBeInTheDocument();
-  expect(screen.getByText('관리자 권한을 확인하는 중입니다.')).toBeInTheDocument();
+  expect(screen.getByText('관리자 권한을 확인하는 중이에요.')).toBeInTheDocument();
   expect(getUserStats).toHaveBeenCalledTimes(1);
   await act(async () => nextCheck.resolve(verified('USER', 'user-at')));
-  expect(screen.getByText('관리자 접근 권한이 없습니다.')).toBeInTheDocument();
+  expect(screen.getByText('관리자 접근 권한이 없어요.')).toBeInTheDocument();
   expect(getMatchStats).toHaveBeenCalledTimes(1);
 });
 
@@ -375,7 +401,7 @@ test.each(['success', 'error'])('세션 전환 전 A28·A29의 늦은 %s 응답�
   });
   expect(userSignal.aborted).toBe(true);
   expect(matchSignal.aborted).toBe(true);
-  expect(await screen.findByText('관리자 접근 권한이 없습니다.')).toBeInTheDocument();
+  expect(await screen.findByText('관리자 접근 권한이 없어요.')).toBeInTheDocument();
   await act(async () => {
     if (outcome === 'success') {
       users.resolve(activeUsers(42)); matches.resolve(matchStats);
@@ -384,7 +410,7 @@ test.each(['success', 'error'])('세션 전환 전 A28·A29의 늦은 %s 응답�
     }
   });
   expect(screen.queryByText('42')).not.toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: '회원 누적 통계' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '탈퇴 처리' })).not.toBeInTheDocument();
 });
 
 test.each([
@@ -462,7 +488,7 @@ test('focus는 세션이 바뀔 때만 재검증하고 StrictMode 리스너는 �
     localStorage.setItem('userId', '9');
     window.dispatchEvent(new Event('focus'));
   });
-  expect(await screen.findByText('관리자 접근 권한이 없습니다.')).toBeInTheDocument();
+  expect(await screen.findByText('관리자 접근 권한이 없어요.')).toBeInTheDocument();
   expect(getCurrentUser).toHaveBeenCalledTimes(2);
   view.unmount();
   const storageHandlers = added.mock.calls.filter(([type, handler]) => type === 'storage' && handler.name === 'onStorage').map(([, handler]) => handler);

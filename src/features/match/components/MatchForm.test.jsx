@@ -32,11 +32,28 @@ test('rejects invalid inputs and accepts matches ending the next day', () => {
   expect(validateMatch(initialMatchValues({ ...match, endAt: '2026-09-27T01:00' }))).toEqual({});
 });
 
+test('offers three skill levels with their meaning and submits the selection', async () => {
+  const submit = jest.fn().mockResolvedValue(undefined);
+  render(<MatchForm initialValues={match} selectedFacility={facility} onSubmit={submit} />);
+  const levels = screen.getByRole('group', { name: '경기 실력 레벨' });
+  expect(levels).toHaveTextContent('루키입문·초보');
+  expect(levels).toHaveTextContent('레귤러아마추어');
+  expect(levels).toHaveTextContent('에이스선출·실력파');
+  fireEvent.click(screen.getByRole('button', { name: /에이스/ }));
+  fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
+  await waitFor(() => expect(submit).toHaveBeenCalledWith({ ...match, skillLevel: 'ADVANCED' }));
+});
+
+test('numbers the steps of the single form in order', () => {
+  render(<MatchForm onSubmit={jest.fn()} />);
+  expect(screen.getAllByRole('heading', { level: 2 }).map(heading => heading.textContent)).toEqual(['어떤 운동을 할까요?', '어디서 만날까요?', '언제 시작하고 끝나나요?', '누구와 함께할까요?', '매치를 소개해 주세요']);
+});
+
 test('shows validation and does not call the API for an empty form', async () => {
   const submit = jest.fn();
   render(<MatchForm onSubmit={submit} />);
   fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
-  expect(await screen.findByText('체육시설을 선택해주세요.')).toBeInTheDocument();
+  expect(await screen.findByText('체육시설을 선택해 주세요.')).toBeInTheDocument();
   expect(submit).not.toHaveBeenCalled();
 });
 
@@ -52,7 +69,7 @@ test('submits a populated form once while the request is pending', async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: '매치 개설 완료하기' })).toBeEnabled());
 });
 
-test.each([[400, '매치 정보를 확인해주세요.'], [404, '선택한 시설을 찾을 수 없습니다.']])('displays HTTP %s and preserves the input', async (status, message) => {
+test.each([[400, '매치 정보를 확인해 주세요.'], [404, '선택한 시설을 찾을 수 없어요.']])('displays HTTP %s and preserves the input', async (status, message) => {
   render(<MatchForm initialValues={match} selectedFacility={facility} onSubmit={jest.fn().mockRejectedValue({ response: { status } })} />);
   fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
   expect(await screen.findByText(new RegExp(message))).toBeInTheDocument();
@@ -103,7 +120,7 @@ test.each(['MALE', 'FEMALE', 'MIXED'])('initializes, validates and submits gende
 });
 
 test.each(['', 'unknown', 'male', 'female', 'mixed', undefined, null, 123])('rejects invalid gender %p without throwing', genderGroup => {
-  expect(validateMatch({ ...initialMatchValues(match), genderGroup }).genderGroup).toBe('성별 구성을 선택해주세요.');
+  expect(validateMatch({ ...initialMatchValues(match), genderGroup }).genderGroup).toBe('성별 구성을 선택해 주세요.');
 });
 
 test('defaults a new match to MIXED', () => {
@@ -127,12 +144,12 @@ test('shows a gender error, focuses the field and clears the error on selection'
   fireEvent.change(select, { target: { value: '' } });
   fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
   expect(select).toHaveAttribute('aria-invalid', 'true');
-  expect(select).toHaveAccessibleDescription('성별 구성을 선택해주세요.');
+  expect(select).toHaveAccessibleDescription('성별 구성을 선택해 주세요.');
   await waitFor(() => expect(select).toHaveFocus());
   expect(submit).not.toHaveBeenCalled();
   fireEvent.change(select, { target: { value: 'FEMALE' } });
   expect(select).toHaveAttribute('aria-invalid', 'false');
-  expect(screen.queryByText('성별 구성을 선택해주세요.')).not.toBeInTheDocument();
+  expect(screen.queryByText('성별 구성을 선택해 주세요.')).not.toBeInTheDocument();
 });
 
 test('loads an AI draft and submits the user-edited gender', async () => {

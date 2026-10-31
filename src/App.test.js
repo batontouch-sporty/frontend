@@ -19,7 +19,7 @@ beforeEach(() => {
 
 test('renders the main page at the root route', () => {
   render(<App />);
-  expect(screen.getByRole('heading', { level: 1, name: /자연어로 말하듯 검색하면/ })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { level: 1, name: "어떤 운동 찾아요?" })).toBeInTheDocument();
 });
 
 test('opens facility search with the entered query', async () => {
@@ -39,10 +39,10 @@ test('opens facility search without a query when submitted with Enter', async ()
   expect(window.location.search).toBe('');
 });
 
-test('opens the match search page from the floating link', async () => {
+test('opens the match search page from the board link', async () => {
   render(<App />);
-  userEvent.click(screen.getByRole('link', { name: '전체 매치 목록 보러가기' }));
+  userEvent.click(screen.getAllByRole('link', { name: '전체 일정 보기' })[0]);
   expect(screen.getByRole('heading', { name: '회원 맞춤 추천 매치' })).toBeInTheDocument();
   expect(window.location.pathname).toBe('/matches/search');
-  expect(await screen.findByText(/조건에 맞는 매치가 없습니다/)).toBeInTheDocument();
+  expect(await screen.findByText(/조건에 맞는 매치가 없어요/)).toBeInTheDocument();
 });

@@ -9,9 +9,12 @@
  */
 
 import api from '../../../api/axios';
+import { SKILL_LABELS } from '../../../constants/skillLevels';
 import { formatMatchDate, formatMatchLocation } from '../utils/matchDisplay';
+import { localDateTime } from '../utils/schedule';
 
-const SKILL_LABELS = { BEGINNER: '초급', INTERMEDIATE: '중급', ADVANCED: '고급' };
+// 서버 조건 요약은 초급·중급·고급으로 내려온다. 화면에서는 표시명으로 바꾼다.
+const SERVER_SKILL_TEXT = { 초급: SKILL_LABELS.BEGINNER, 중급: SKILL_LABELS.INTERMEDIATE, 고급: SKILL_LABELS.ADVANCED };
 const SPORT_LABELS = { SOCCER: '축구', FUTSAL: '풋살', BASKETBALL: '농구', BASEBALL: '야구', TENNIS: '테니스', BADMINTON: '배드민턴', TABLE_TENNIS: '탁구', VOLLEYBALL: '배구', SWIMMING: '수영', RUNNING: '러닝' };
 const GENDER_LABELS = { MALE: '남성', FEMALE: '여성', MIXED: '혼성'};
 const STATUS_LABELS = { RECRUITING: '모집중', CLOSED: '마감' };
@@ -31,7 +34,7 @@ export function toConditionSummary(conditions = []) {
     throw new Error('분석 조건 응답 형식을 확인해주세요.');
   }
   if (conditions.length === 0) return [];
-  const values = new Map(conditions.map(({ label, value }) => [CONDITION_ALIASES[label] || label, value]));
+  const values = new Map(conditions.map(({ label, value }) => [CONDITION_ALIASES[label] || label, SERVER_SKILL_TEXT[value] || value]));
   return CONDITION_LABELS.map(label => ({ label, value: values.get(label)?.trim() || '미지정' }));
 }
 
@@ -56,15 +59,17 @@ export function toMatchCard(match) {
     startAt: match.startAt,
     schedule: formatMatchDate(match.startAt),
     location: formatMatchLocation(match.region, match.facilityName),
+    region: match.region,
+    closed: match.status != null && match.status !== 'RECRUITING',
     isFree: typeof match.isFree === 'boolean' ? match.isFree : null,
     score: Number.isFinite(match.score) ? match.score : null,
     distance: Number.isFinite(match.distance) ? match.distance : null,
     // [AI-02] 참여 인원: 서버 MatchResponseDto는 numCurrentParticipant로 내려준다.
-    // 숫자 표시와 진행률 계산은 MatchCard에서 함께 처리한다.
+    // 숫자 표시와 진행률 계산은 MatchRow에서 함께 처리한다.
     currentParticipant: match.numCurrentParticipant,
     maxParticipant: match.maxParticipant,
     genderGroup: match.genderGroup,
-    // 모르는 값은 null로 두고, 표시 문구는 MatchCard 기본값을 사용한다.
+    // 모르는 값은 null로 두고, 표시 문구는 MatchRow 기본값을 사용한다.
     genderGroupLabel: GENDER_LABELS[match.genderGroup] ?? null,
   };
 }
@@ -107,6 +112,13 @@ export async function searchMatchesByCriteria({ sportType, genderGroup, region, 
   return data.map(toMatchCard);
 }
 
+// 메인 일정 보드 — 지금 이후 모집 중인 매치를 받아 프론트에서 시간순으로 나눈다.
+export async function fetchRecruitingMatches(signal) {
+  const { data } = await api.get('/api/matches', { params: { status: 'RECRUITING', startAt: localDateTime() }, signal, timeout: 15000, skipSessionRedirect: true });
+  if (!Array.isArray(data)) throw new Error('매치 목록 응답 형식을 확인해주세요.');
+  return data.map(toMatchCard);
+}
+
 // [AI-01] AI 매치 초안 생성
 // MainPage.generateHandler가 prepareAiMatchDraft로 넘길 응답 본문 { initialValues }를 반환한다.
 // 실패 메시지는 AISearchBox가 입력창 아래에 표시한다.
@@ -115,8 +127,8 @@ export async function draftAiMatch(prompt) {
     const { data } = await api.post('/api/ai/matches', { prompt });
     return data;
   } catch (error) {
-    if (error.response?.status === 401) throw new Error('로그인 후 AI 매치 생성을 이용할 수 있습니다.');
+    if (error.response?.status === 401) throw new Error('로그인 후 AI 매치 생성을 쓸 수 있어요.');
     const message = error.response?.data?.message;
-    throw new Error(message || '매치 초안을 만들지 못했습니다. 잠시 후 다시 시도해주세요.');
+    throw new Error(message || '매치 초안을 만들지 못했어요. 잠시 후 다시 시도해 주세요.');
   }
 }

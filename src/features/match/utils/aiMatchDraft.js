@@ -14,7 +14,7 @@
  */
 export function prepareAiMatchDraft(prompt, result) {
   if (result != null && (typeof result !== 'object' || Array.isArray(result) || !result.initialValues || typeof result.initialValues !== 'object' || Array.isArray(result.initialValues))) {
-    throw new Error('매치 생성 조건 응답 형식을 확인해주세요.');
+    throw new Error('매치 생성 조건 응답 형식을 확인해 주세요.');
   }
   const source = result?.initialValues || {};
   const initialValues = {};
