@@ -42,7 +42,7 @@ jobs:
         run: npm run build
         env:
           CI: 'false'
-          REACT_APP_API_BASE_URL: http://localhost:8000
+          REACT_APP_BACKEND_ENDPOINT: http://localhost:8000
 
       - name: 빌드 결과 보관
         uses: actions/upload-artifact@v4
