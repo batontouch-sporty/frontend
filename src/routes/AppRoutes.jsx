@@ -12,6 +12,7 @@ import MyPage from '../features/mypage/pages/MyPage';
 import FacilityListPage from '../features/facilities/pages/FacilityListPage';
 import FacilityDetailPage from '../features/facilities/pages/FacilityDetailPage';
 import { draftAiMatch } from '../features/main/api/aiMatchApi';
+import AdminDashboardPage from '../features/admin/pages/AdminDashboardPage';
 
 export default function AppRoutes() {
   return (
@@ -26,6 +27,7 @@ export default function AppRoutes() {
       <Route path="/signup" element={<SignUpPage />} />
       {/* [USR-06 / PR-01] 본인 정보 조회 및 프로필 수정 API 연결. */}
       <Route path="/mypage" element={<MyPage />} />
+      <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
       {process.env.NODE_ENV === 'development' && <Route path="/mypage/preview" element={<MyPage preview />} />}
 
       <Route path="/matches/new" element={<RequireMatchAuth><MatchCreatePage /></RequireMatchAuth>} />
