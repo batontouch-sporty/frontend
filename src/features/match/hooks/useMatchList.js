@@ -78,8 +78,10 @@ export default function useMatchList() {
       if (request.signal.aborted) return;
       setMatches(rows); setStatus('success');
     } catch (error) {
-      if (request.signal.aborted || quiet) return;
-      setListError(matchRequestError(error)); setStatus('error');
+      if (request.signal.aborted) return;
+      // 조용한 재조회가 진행 중인 재시도를 대체한 경우에도 로딩에 멈추지 않게 한다.
+      setListError(matchRequestError(error));
+      setStatus(current => (current === 'loading' ? 'error' : current));
     }
   }, []);
 
@@ -98,8 +100,9 @@ export default function useMatchList() {
       if (request.signal.aborted) return;
       setRecommendations(rows); setRecommendationStatus('success');
     } catch (error) {
-      if (request.signal.aborted || quiet) return;
-      setRecommendationError(matchRequestError(error, 'recommendation')); setRecommendationStatus('error');
+      if (request.signal.aborted) return;
+      setRecommendationError(matchRequestError(error, 'recommendation'));
+      setRecommendationStatus(current => (current === 'loading' ? 'error' : current));
     }
   }, []);
 
