@@ -29,7 +29,7 @@ const kstFormatter = new Intl.DateTimeFormat('ko-KR', {
 function RangeResults({ data }) {
   return <div className="admin-dashboard-range-results">{data.map((item, index) => {
     const labels = Object.entries(item.metric).sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}="${value}"`).join(', ');
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(', ');
     const headingId = `admin-range-series-${index}`;
     return <section className="admin-dashboard-range-series" key={index} aria-labelledby={headingId}>
       <h3 id={headingId}>시계열 {index + 1}: {labels || '라벨 없음'}</h3>
