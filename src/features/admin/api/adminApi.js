@@ -35,7 +35,11 @@ export const getMatchStats = ({ signal } = {}) =>
 const prometheusData = (body, expectedType) => {
   if (body?.status !== 'success' || body?.data?.resultType !== expectedType || !Array.isArray(body.data.result)
     || !body.data.result.every(item => item && typeof item.metric === 'object' && item.metric !== null
-      && Array.isArray(item[expectedType === 'vector' ? 'value' : 'values']))) {
+      && Array.isArray(item[expectedType === 'vector' ? 'value' : 'values'])
+      && (expectedType !== 'matrix' || item.values.every(sample => Array.isArray(sample) && sample.length === 2
+        && typeof sample[0] === 'number' && Number.isFinite(sample[0])
+        && Number.isFinite(sample[0] * 1000) && Math.abs(sample[0] * 1000) <= 8.64e15
+        && typeof sample[1] === 'string')))) {
     throw new Error(body?.status === 'error' ? 'PROMETHEUS_ERROR' : 'INVALID_PROMETHEUS_RESPONSE');
   }
   return body.data.result;

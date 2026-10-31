@@ -45,3 +45,23 @@ test('Prometheus error와 vector/matrix 불일치는 성공으로 표시하지 �
   await expect(queryInstant({ query: 'bad' })).rejects.toThrow('PROMETHEUS_ERROR');
   await expect(queryInstant({ query: 'up' })).rejects.toThrow('INVALID_PROMETHEUS_RESPONSE');
 });
+
+test.each([
+  [[100]], [[100, 1]], [['100', '1']], [[Number.POSITIVE_INFINITY, '1']],
+  [[8.64e12 + 1, '1']], [[100, '1', 'extra']], [null],
+])('A31의 잘못된 샘플 %p는 정상 결과로 처리하지 않는다', async values => {
+  api.get.mockResolvedValue({ data: { status: 'success', data: {
+    resultType: 'matrix', result: [{ metric: {}, values }],
+  } } });
+  await expect(queryRange({ query: 'up', start: 0, end: 100, step: 60 }))
+    .rejects.toThrow('INVALID_PROMETHEUS_RESPONSE');
+});
+
+test('A31의 빈 values와 특수 값 문자열은 원문 그대로 유지한다', async () => {
+  const matrix = [
+    { metric: { job: 'empty' }, values: [] },
+    { metric: { job: 'values' }, values: [[0, 'NaN'], [60, '+Inf'], [120, '-Inf']] },
+  ];
+  api.get.mockResolvedValue({ data: { status: 'success', data: { resultType: 'matrix', result: matrix } } });
+  await expect(queryRange({ query: 'up', start: 0, end: 120, step: 60 })).resolves.toEqual(matrix);
+});

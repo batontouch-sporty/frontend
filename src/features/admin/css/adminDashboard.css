@@ -20,4 +20,10 @@
 .admin-dashboard-monitor input, .admin-dashboard-monitor select { min-height: 38px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 8px; }
 .admin-dashboard-monitor li { margin: 8px 0; overflow-wrap: anywhere; }
 .admin-dashboard-monitor li span { margin-left: 12px; }
+.admin-dashboard-range-series h3 { margin: 24px 0 12px; overflow-wrap: anywhere; }
+.admin-dashboard-range-scroll { max-width: 100%; overflow-x: auto; }
+.admin-dashboard-range-scroll table { width: 100%; min-width: 400px; border-collapse: collapse; text-align: left; }
+.admin-dashboard-range-scroll th, .admin-dashboard-range-scroll td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
+.admin-dashboard-range-scroll th { color: #475569; background: #f1f5f9; }
+.admin-dashboard-range-scroll td { overflow-wrap: anywhere; }
 @media (max-width: 700px) { .admin-dashboard-main { padding: 20px 16px 48px; } .admin-dashboard-grid { grid-template-columns: 1fr; gap: 0; } }

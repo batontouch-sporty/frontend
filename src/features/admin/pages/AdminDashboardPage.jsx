@@ -21,6 +21,37 @@ function StatList({ values, labels }) {
     <div key={key}><dt>{label}</dt><dd>{values[key].toLocaleString('ko-KR')}</dd></div>)}</dl>;
 }
 
+const kstFormatter = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+function RangeResults({ data }) {
+  return <div className="admin-dashboard-range-results">{data.map((item, index) => {
+    const labels = Object.entries(item.metric).sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(', ');
+    const headingId = `admin-range-series-${index}`;
+    return <section className="admin-dashboard-range-series" key={index} aria-labelledby={headingId}>
+      <h3 id={headingId}>시계열 {index + 1}: {labels || '라벨 없음'}</h3>
+      {item.values.length === 0 ? <p>표시할 시점이 없습니다.</p> :
+        <div className="admin-dashboard-range-scroll">
+          <table aria-labelledby={headingId}>
+            <thead><tr><th scope="col">시각 (KST)</th><th scope="col">값</th></tr></thead>
+            <tbody>{item.values.map(([timestamp, value], sampleIndex) => {
+              const instant = new Date(timestamp * 1000);
+              const milliseconds = instant.getUTCMilliseconds();
+              const time = `${kstFormatter.format(instant)}${milliseconds ? `.${String(milliseconds).padStart(3, '0')}` : ''} KST`;
+              return <tr key={sampleIndex}>
+                <td><time dateTime={instant.toISOString()}>{time}</time></td>
+                <td>{value}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>}
+    </section>;
+  })}</div>;
+}
+
 function Monitoring({ sessionSignal }) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState('instant');
@@ -82,10 +113,11 @@ function Monitoring({ sessionSignal }) {
     {state.kind === 'idle' && <p>조회할 지표를 입력해주세요.</p>}
     {state.kind === 'loading' && <p role="status">지표를 불러오는 중입니다.</p>}
     {state.kind === 'success' && state.id === submitted?.id && (state.data.length === 0 ? <p>조회 결과가 없습니다.</p> :
-      <ul>{state.data.map((item, index) => <li key={index}>
-        <strong>{JSON.stringify(item.metric)}</strong>
-        <span>{state.mode === 'instant' ? String(item.value[1]) : `${item.values.length}개 시점`}</span>
-      </li>)}</ul>)}
+      state.mode === 'range' ? <RangeResults data={state.data} /> :
+        <ul>{state.data.map((item, index) => <li key={index}>
+          <strong>{JSON.stringify(item.metric)}</strong>
+          <span>{String(item.value[1])}</span>
+        </li>)}</ul>)}
     {!['idle', 'loading', 'success'].includes(state.kind) && <>
       <p role="alert">{{ forbidden: '모니터링 접근 권한이 없습니다.', unavailable: '모니터링 연동을 확인할 수 없습니다. 경로와 서비스 준비 상태를 확인해주세요.', unauthorized: '인증을 확인할 수 없습니다. 다시 로그인해주세요.', error: '지표 조회에 실패했습니다. PromQL 또는 연결 상태를 확인해주세요.' }[state.kind]}</p>
       <button type="button" onClick={() => startRequest(submitted)}>다시 시도</button>
