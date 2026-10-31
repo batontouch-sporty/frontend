@@ -19,7 +19,7 @@ reviews:
   path_instructions:
     - path: "src/**"
       instructions: >-
-        API 호출이 Gateway 주소 하나(REACT_APP_API_BASE_URL)와 서비스 경로(/user-service/api/... 등)를 쓰는지,
+        API 호출이 Gateway 주소 하나(REACT_APP_BACKEND_ENDPOINT)를 쓰는지, 서비스 경로 변환은 src/api/axios.js 한 곳에서 처리하는지,
         토큰을 localStorage에 넣을 때 만료·갱신 처리가 있는지, API 키나 비밀값이 코드에 없는지 확인한다.
 
 chat:
