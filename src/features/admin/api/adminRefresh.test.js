@@ -12,7 +12,7 @@ afterEach(() => localStorage.clear());
 
 test('실제 공통 Axios 재발급 후 A2 응답에 재시도·새 Bearer 근거가 담긴다', async () => {
   const adapter = jest.fn(config => {
-    if (config.url === '/api/auth/refresh') return success(config, { accessToken: 'renewed-at' });
+    if (config.url === '/user-service/api/auth/refresh') return success(config, { accessToken: 'renewed-at' });
     if (config.url === '/user-service/api/users/me') {
       return config.headers.Authorization === 'Bearer renewed-at'
         ? success(config, { role: 'ADMIN' }) : unauthorized(config);
@@ -26,6 +26,6 @@ test('실제 공통 Axios 재발급 후 A2 응답에 재시도·새 Bearer 근�
   expect(result).toEqual({ user: { role: 'ADMIN' }, retried: true, authorization: 'Bearer renewed-at' });
   expect(localStorage.getItem('at')).toBe('renewed-at');
   expect(adapter.mock.calls.map(([config]) => config.url)).toEqual([
-    '/user-service/api/users/me', '/api/auth/refresh', '/user-service/api/users/me',
+    '/user-service/api/users/me', '/user-service/api/auth/refresh', '/user-service/api/users/me',
   ]);
 });
