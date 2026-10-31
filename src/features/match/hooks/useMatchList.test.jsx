@@ -164,3 +164,26 @@ test('date tabs filter on the client, reset paging and clear with reset', async 
   expect(result.current.dateTab).toBe('');
   expect(result.current.totalCount).toBe(8);
 });
+
+test('a quiet reload that replaces a running retry ends in an error, not endless loading', async () => {
+  localStorage.setItem('at', 'test-token');
+  requestMatchParticipation.mockResolvedValue({});
+  fetchMatchList.mockReturnValueOnce(new Promise(() => {})).mockRejectedValueOnce(new Error('network'));
+  fetchRecommendedMatches.mockReturnValueOnce(new Promise(() => {})).mockRejectedValueOnce(new Error('network'));
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('loading'));
+  await act(async () => { await result.current.onJoin(7); });
+  await waitFor(() => expect(result.current.status).toBe('error'));
+  expect(result.current.recommendationStatus).toBe('error');
+});
+
+test('a quiet reload failure keeps the rows already on screen', async () => {
+  localStorage.setItem('at', 'test-token');
+  requestMatchParticipation.mockResolvedValue({});
+  fetchMatchList.mockResolvedValueOnce([{ id: 7, sportType: 'TENNIS' }]).mockRejectedValueOnce(new Error('network'));
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('success'));
+  await act(async () => { await result.current.onJoin(7); });
+  expect(result.current.status).toBe('success');
+  expect(result.current.matches.map(match => match.id)).toEqual([7]);
+});
