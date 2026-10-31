@@ -7,8 +7,7 @@
 - `pages/MatchListPage.jsx`: 실제 라우트 컴포넌트와 표시 전용 `MatchListView`.
 - `hooks/useMatchList.js`: 목록/추천 조회, 필터 적용·초기화, 정렬, 더보기, 재시도, 참가, 시설 검색 이동.
 - `api/matchListApi.js`: 공통 axios 기반 API, 지원 필드만 전송, DTO 화면 모델 변환, 오류 메시지.
-- `components/MatchListFilters.jsx`, `MatchBrowseCard.jsx`: 상태/콜백을 받아 UI 표시.
-- `data/matchListPreview.js`: 디자인 예시 전용. 명시적으로 `MatchListView preview`를 렌더링할 때만 사용.
+- `components/MatchListFilters.jsx`: 상단 종목·날짜·조건 필터. 일정 행은 `features/main/components/MatchRow.jsx`를 쓴다.
 
 ## 동작
 

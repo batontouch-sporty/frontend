@@ -4,12 +4,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getProfile } from '../api/profileApi';
 import { districts, sports } from '../../auth/data/signUpOptions';
 import closeIcon from '../assets/close.svg';
-import locationIcon from '../assets/location.svg';
 import '../css/profileModal.css';
 
 const districtLabels = Object.fromEntries(districts);
 const sportLabels = Object.fromEntries(sports);
-const sportEmoji = { SOCCER: '⚽', FUTSAL: '⚽', BASKETBALL: '🏀', BASEBALL: '⚾', TENNIS: '🎾', BADMINTON: '🏸', TABLE_TENNIS: '🏓', VOLLEYBALL: '🏐', SWIMMING: '🏊', RUNNING: '🏃' };
 
 // [PR-02] 공통 사용법: 부모가 선택한 profileId를 전달하고 onClose에서 선택값을 null로 바꾼다.
 // ID가 바뀌면 이전 프로필/오류 상태를 재사용하지 않고 새로 조회한다.
@@ -83,40 +81,35 @@ function ProfileDialog({ profileId, onClose }) {
       onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
       <div className="profile-modal-panel">
         <header className="profile-modal-header">
-          <h2 id={titleId}>프로필 상세 정보</h2>
+          {status === 'ready' && <div className="profile-modal-avatar" aria-hidden="true">
+            {profile.imageUrl && !imageFailed
+              ? <img src={profile.imageUrl} alt="" onError={() => setImageFailed(true)} />
+              : (profile.nickname?.trim().slice(0, 1) || '?')}
+          </div>}
+          <div className="profile-modal-identity">
+            <h2 id={titleId}>{status === 'ready' ? profile.nickname || '닉네임 정보 없음' : '프로필'}</h2>
+            {status === 'ready' && <p className="profile-modal-region">{districtLabels[profile.district] ? `서울 ${districtLabels[profile.district]}` : '자치구 정보 없음'}</p>}
+          </div>
           <button type="button" className="profile-modal-close" aria-label="프로필 모달 닫기" onClick={onClose}><img src={closeIcon} alt="" /></button>
         </header>
         <div className="profile-modal-body" aria-busy={status === 'loading'}>
-          {status === 'loading' && <div className="profile-modal-feedback" role="status"><p>프로필 정보를 불러오는 중입니다.</p></div>}
-          {status === 'login' && <div className="profile-modal-feedback" role="status"><h3>로그인이 필요합니다</h3><p>프로필 조회는 로그인이 필요합니다.</p><p className="profile-modal-muted">로그인 후 회원의 프로필과 선호 종목을 확인해 보세요.</p></div>}
-          {status === 'not-found' && <div className="profile-modal-feedback" role="alert"><h3>프로필을 찾을 수 없습니다</h3><p>존재하지 않거나 삭제된 프로필입니다.</p></div>}
-          {status === 'error' && <div className="profile-modal-feedback" role="alert"><h3>프로필을 불러오지 못했습니다</h3><p>연결 상태를 확인하고 다시 시도해 주세요.</p><button type="button" className="profile-modal-primary" onClick={() => setRetryCount(count => count + 1)}>다시 시도</button></div>}
-          {status === 'ready' && <>
-            <section className="profile-modal-summary" aria-label="회원 정보">
-              <div className="profile-modal-avatar" aria-hidden="true">
-                {profile.imageUrl && !imageFailed
-                  ? <img src={profile.imageUrl} alt="" onError={() => setImageFailed(true)} />
-                  : (profile.nickname?.trim().slice(0, 1) || '?')}
-              </div>
-              <div className="profile-modal-identity">
-                <h3>{profile.nickname || '닉네임 정보 없음'}</h3>
-                <p className="profile-modal-region"><img src={locationIcon} alt="" />{districtLabels[profile.district] ? `서울 ${districtLabels[profile.district]}` : '자치구 정보 없음'}</p>
-              </div>
-            </section>
-            <section className="profile-modal-preferences" aria-label="선호 운동 종목">
-              {/* [PR-02] API에는 숙련도·포지션·접속 여부·이메일이 없으므로 예시 정보를 표시하지 않는다. */}
-              <h3>선호 운동 종목</h3>
-              <div className="profile-modal-sports">
-                {preferenceSports.length > 0 ? <ul>{preferenceSports.map(sport => <li key={sport}><span aria-hidden="true">{sportEmoji[sport] || ''}</span>{sportLabels[sport] || sport}</li>)}</ul>
-                  : <p className="profile-modal-muted">등록된 선호 운동 종목이 없습니다.</p>}
-              </div>
-            </section>
-          </>}
+          {status === 'loading' && <div className="profile-modal-feedback" role="status"><p>프로필을 불러오는 중이에요.</p></div>}
+          {status === 'login' && <div className="profile-modal-feedback" role="status"><h3>로그인이 필요해요</h3><p className="profile-modal-muted">로그인하면 프로필과 선호 종목을 볼 수 있어요.</p></div>}
+          {status === 'not-found' && <div className="profile-modal-feedback" role="alert"><h3>프로필을 찾을 수 없어요</h3><p className="profile-modal-muted">없거나 삭제된 프로필이에요.</p></div>}
+          {status === 'error' && <div className="profile-modal-feedback" role="alert"><h3>프로필을 불러오지 못했어요</h3><p className="profile-modal-muted">연결 상태를 확인하고 다시 시도해주세요.</p><button type="button" className="profile-modal-primary" onClick={() => setRetryCount(count => count + 1)}>다시 시도</button></div>}
+          {status === 'ready' && <section className="profile-modal-preferences" aria-label="선호 운동 종목">
+            {/* [PR-02] API에는 숙련도·포지션·접속 여부·이메일이 없으므로 예시 정보를 표시하지 않는다. */}
+            <h3>선호 종목</h3>
+            <div className="profile-modal-sports">
+              {preferenceSports.length > 0 ? <ul>{preferenceSports.map(sport => <li key={sport}>{sportLabels[sport] || sport}</li>)}</ul>
+                : <p className="profile-modal-muted">등록한 선호 종목이 없어요.</p>}
+            </div>
+          </section>}
         </div>
-        <footer className="profile-modal-footer">
+        {status === 'login' && <footer className="profile-modal-footer">
           <button type="button" className="profile-modal-secondary" onClick={onClose}>닫기</button>
-          {status === 'login' && <button type="button" className="profile-modal-primary" onClick={loginHandler}>로그인하기</button>}
-        </footer>
+          <button type="button" className="profile-modal-primary" onClick={loginHandler}>로그인하기</button>
+        </footer>}
       </div>
     </dialog>, document.body,
   );

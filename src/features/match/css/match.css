@@ -1,88 +1,123 @@
-.match-page { --match-blue: #2563eb; --match-ink: #1e293b; --match-muted: #475569; --match-field: #f1f5f9; background: #f8fafc; color: var(--match-ink); min-height: 100vh; font-size: 14px; }
-.match-page *, .match-form * { box-sizing: border-box; }
+.match-page { min-height: 100vh; background: var(--canvas); color: var(--text); font-size: 14px; }
 .match-page a { color: inherit; text-decoration: none; }
-.match-header { background: rgba(255,255,255,.95); box-shadow: 0 1px 8px #0000000a; }
-.match-header-inner { max-width: 1280px; min-height: 112px; padding: 20px 64px; margin: auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.match-brand { display: flex; align-items: center; gap: 12px; }
-.match-brand img, .match-footer img { object-fit: contain; }
-.match-brand strong { display: block; font-size: 18px; letter-spacing: -.45px; }
-.match-brand small { display: block; font-size: 9px; letter-spacing: 1px; margin-top: 3px; }
-.match-my-link { padding: 10px; font-size: 12px; }
-.match-main { max-width: 1280px; padding: 24px 64px 100px; margin: auto; min-height: calc(100vh - 210px); }
-.match-breadcrumb { display: flex; gap: 10px; color: var(--match-muted); font-size: 12px; }
-.match-breadcrumb > span:not([aria-current]) { color: #94a3b8; }
-.match-main h1 { font-size: 32px; letter-spacing: -.64px; font-weight: 600; line-height: 1.3; margin: 12px 0 6px; }
-.match-intro { color: var(--match-muted); line-height: 1.6; margin: 0 0 32px; }
-.match-form { --match-blue: #2563eb; --match-ink: #1e293b; --match-muted: #475569; --match-field: #f1f5f9; display: grid; grid-template-columns: minmax(0, 2.08fr) minmax(230px, 1fr); gap: 32px; color: var(--match-ink); }
-.match-fields { display: flex; flex-direction: column; gap: 24px; padding: 0; margin: 0; border: 0; min-width: 0; }
-.match-section { background: white; border-radius: 16px; padding: 32px; box-shadow: 0 1px 2px #0000000d; }
-.match-section-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-.match-step { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; background: #0055ff1a; color: var(--match-blue); border-radius: 12px; font-size: 18px; font-weight: 600; }
-.match-section h2 { font-size: 18px; font-weight: 600; margin: 0; line-height: 1.4; }
-.match-section-heading p { font-size: 12px; color: var(--match-muted); line-height: 1.5; margin: 3px 0 0; }
-.match-required { flex-shrink: 0; margin-left: auto; font-size: 10px; background: var(--match-field); color: var(--match-blue); padding: 4px 10px; border-radius: 20px; }
-.match-form button, .match-form input, .match-form textarea { font: inherit; }
-.match-form button { cursor: pointer; border: 0; }
+.match-main { max-width: 808px; min-height: calc(100vh - 210px); padding: 24px 24px 80px; margin: auto; }
+.match-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
+.match-breadcrumb a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+.match-breadcrumb a:active { opacity: .7; }
+@media (hover: hover) {
+  .match-breadcrumb a:hover { text-decoration: underline; text-underline-offset: 3px; }
+}
+.match-breadcrumb > span:not([aria-current]) { color: var(--muted); }
+.match-main h1 { margin: 12px 0 4px; font-size: 28px; letter-spacing: -.5px; font-weight: 700; line-height: 1.3; }
+.match-intro { margin: 0 0 24px; color: var(--muted); }
+.match-section { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); }
+
+/* 한 장의 폼에 번호 줄을 세워 단계를 보여 준다. */
+.match-form { color: var(--text); }
+.match-fields { min-width: 0; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+.match-step-block { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px 16px; align-items: center; padding: 24px; }
+.match-step-block:not(:last-of-type)::before { content: ''; position: absolute; top: 60px; bottom: -20px; left: 40px; width: 1px; background: var(--line-strong); }
+.match-step { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: var(--volt); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.match-step-heading h2 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.4; }
+.match-step-heading p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.match-step-content { grid-column: 2; min-width: 0; }
+
+.match-form button { cursor: pointer; border: 0; transition: background-color var(--motion), border-color var(--motion), color var(--motion); }
 .match-form button:disabled { opacity: .55; cursor: not-allowed; }
-.match-form :focus-visible, .match-page a:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
-.match-sports { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; padding-top: 4px; }
-.match-sport { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px 3px; gap: 5px; border-radius: 12px; background: var(--match-field); color: var(--match-ink); }
-.match-sport.is-selected { background: white; box-shadow: 0 0 0 2px var(--match-blue); }
-.match-sport-icon { width: 44px; height: 44px; display: grid; place-items: center; background: #e2e8f0; border-radius: 50%; margin-bottom: 3px; }
-.match-sport.is-selected .match-sport-icon { background: #0041c81a; }
-.match-sport img { width: 22px; height: 22px; }
-.match-sport strong { font-size: 12px; font-weight: 500; }
-.match-sport small { font-size: 9px; color: var(--match-muted); }
-.match-sport.is-selected small { color: var(--match-blue); }
-.match-form input, .match-form textarea { width: 100%; min-width: 0; background: var(--match-field); color: var(--match-ink); border: 1px solid transparent; border-radius: 12px; padding: 14px 16px; line-height: 1.5; font-size: 14px; }
-.match-form select { width: 100%; min-width: 0; background: var(--match-field); color: var(--match-ink); border: 1px solid transparent; border-radius: 12px; padding: 14px 16px; font: inherit; line-height: 1.5; font-size: 14px; }
-.match-form input[aria-invalid=true], .match-form textarea[aria-invalid=true], .match-form select[aria-invalid=true] { border-color: #b91c1c; }
-.match-form input::placeholder, .match-form textarea::placeholder { color: #64748b; }
-.match-form textarea { resize: vertical; min-height: 150px; }
-.match-search { display: flex; align-items: center; background: var(--match-field); border-radius: 12px; padding-right: 8px; gap: 4px; }
-.match-region { margin-bottom: 10px; }
-.match-search input { background: transparent; }
-.match-small-button { background: var(--match-blue); color: white; padding: 9px 13px; font-size: 11px !important; border-radius: 8px; white-space: nowrap; }
-.match-search-message { font-size: 12px; line-height: 1.6; color: var(--match-muted); }
+.match-sports { display: flex; flex-wrap: wrap; gap: 8px; }
+.match-form .match-sport { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--text); font-weight: 500; white-space: nowrap; }
+.match-form .match-sport:active:not(:disabled):not(.is-selected) { background: var(--canvas); }
+.match-form .match-sport.is-selected { border-color: var(--ink); background: var(--ink); color: var(--volt); font-weight: 700; }
+.match-form .match-sport.is-selected:disabled { opacity: 1; }
+.match-sport img { filter: brightness(0); }
+.match-sport.is-selected img { filter: brightness(0) invert(1); }
+
+.match-form input, .match-form textarea, .match-form select { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-input); border-radius: var(--radius-field); background: var(--surface); color: var(--text); font-size: 14px; line-height: 1.5; transition: border-color var(--motion); }
+.match-form select.sporty-district-select.match-region { flex: 0 0 148px; width: 148px; border-color: var(--line-input); }
+.match-form input[aria-invalid=true], .match-form textarea[aria-invalid=true], .match-form select[aria-invalid=true] { border-color: var(--danger); }
+.match-form input:disabled, .match-form textarea:disabled, .match-form select:disabled { background: var(--canvas); color: var(--muted); cursor: not-allowed; }
+.match-form select:not(.sporty-district-select) { appearance: none; padding-right: 36px; background-image: url("../../auth/assets/chevron.svg"); background-repeat: no-repeat; background-position: right 12px center; background-size: 10px auto; }
+.match-form input::placeholder, .match-form textarea::placeholder { color: var(--muted); }
+.match-form textarea { display: block; resize: vertical; min-height: 150px; }
+
+.match-search { display: flex; align-items: center; gap: 8px; }
+.match-search > input { flex: 1; }
+.match-form .match-small-button { flex-shrink: 0; min-height: 44px; padding: 0 16px; border-radius: var(--radius-button); background: var(--ink); color: var(--volt); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.match-form .match-small-button:active:not(:disabled) { background: var(--ink-raised); }
+.match-search-message { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .match-search-message:empty { display: none; }
-.match-empty, .match-facility { padding: 20px; background: var(--match-field); border-radius: 12px; font-size: 13px; margin: 16px 0 0; }
-.match-empty { color: var(--match-muted); }
+.match-empty, .match-facility { margin: 12px 0 0; padding: 16px; border-radius: var(--radius-button); background: var(--canvas); font-size: 14px; }
+.match-empty { color: var(--muted); }
 .match-facility { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.match-facility p { font-size: 12px; color: var(--match-muted); margin-bottom: 0; }
-.match-facility-tag { display: inline-block; margin-left: 8px; padding: 3px 6px; font-size: 10px; color: #047857; background: #f0fdf4; border-radius: 5px; }
-.match-facility button { white-space: nowrap; padding: 8px; background: white; color: var(--match-muted); border-radius: 6px; font-size: 11px; }
-.match-results { list-style: none; padding: 0; max-height: 260px; overflow-y: auto; }
-.match-results button { display: flex; flex-wrap: wrap; gap: 8px; text-align: left; width: 100%; background: var(--match-field); padding: 14px; margin-bottom: 6px; border-radius: 8px; color: var(--match-ink); }
-.match-results span { font-size: 12px; }
-.match-schedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; }
-.match-control { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.match-control label, .match-control > span { font-size: 12px; }
-.match-stepper { display: flex; align-items: center; padding: 6px; gap: 4px; background: var(--match-field); border-radius: 12px; }
-.match-stepper button { flex-shrink: 0; width: 36px; height: 36px; border-radius: 8px; background: white; color: var(--match-muted); font-size: 23px; }
-.match-stepper input { text-align: right; padding: 0; border-radius: 4px; font-size: 26px; font-weight: 700; color: var(--match-blue); appearance: textfield; }
+.match-facility > div { min-width: 0; }
+.match-facility p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.match-facility-tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--success-tint); color: var(--success); font-size: 12px; font-weight: 500; }
+.match-form .match-facility button { flex-shrink: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-button); background: var(--surface); color: var(--text); font-size: 13px; white-space: nowrap; }
+.match-form .match-facility button:active:not(:disabled) { background: var(--canvas); }
+.match-results { max-height: 260px; margin: 12px 0 0; padding: 0; overflow-y: auto; list-style: none; }
+.match-form .match-results button { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; min-height: 44px; margin-bottom: 4px; padding: 12px; border-radius: var(--radius-field); background: var(--canvas); color: var(--text); text-align: left; }
+.match-form .match-results button:active:not(:disabled) { background: var(--line); }
+.match-results span { font-size: 13px; }
+
+.match-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(140px, calc(50% - 8px)), 1fr)); gap: 16px; }
+.match-control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.match-control label, .match-control > span { font-size: 13px; font-weight: 500; }
+.match-stepper { display: flex; align-items: center; gap: 4px; min-height: 44px; border: 1px solid var(--line-input); border-radius: var(--radius-field); }
+.match-form .match-stepper button { flex-shrink: 0; width: 44px; height: 44px; border-radius: var(--radius-field); background: transparent; color: var(--text); font-size: 18px; }
+.match-form .match-stepper button:active:not(:disabled) { background: var(--canvas); }
+.match-form .match-stepper input { flex: 1; min-width: 44px; padding: 0; border: 0; text-align: right; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; appearance: textfield; }
 .match-stepper input::-webkit-inner-spin-button { appearance: none; }
-.match-stepper > span { font-size: 11px; color: var(--match-muted); margin-right: auto; }
-.match-time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.match-time-grid input { padding: 12px 8px; }
-.match-end-date { grid-column: 1 / -1; }
-.match-levels { display: flex; gap: 8px; }
-.match-levels button { flex: 1; padding: 12px 7px; font-size: 10px; line-height: 1.5; background: #f1f5f9; color: var(--match-ink); border-radius: 12px; }
-.match-levels button.is-selected { background: #2563eb; color: white; }
+.match-stepper > span { color: var(--muted); font-size: 13px; }
+
+.match-level-control { margin-top: 16px; }
+.match-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: var(--radius-button); background: var(--canvas); }
+.match-form .match-levels button { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; padding: 4px; border-radius: var(--radius-field); background: transparent; color: var(--text); }
+.match-levels strong { font-size: 14px; font-weight: 500; }
+.match-levels small { color: var(--muted); font-size: 12px; }
+.match-form .match-levels button.is-selected { background: var(--ink); color: var(--volt); }
+.match-levels button.is-selected strong { font-weight: 700; }
+.match-levels button.is-selected small { color: var(--on-ink-muted); }
+.match-form .match-levels button:active:not(:disabled):not(.is-selected) { background: var(--line); }
+
 .match-label-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.match-label-row > span { font-size: 10px; color: #64748b; }
-.match-description { margin-top: 20px; }
-.match-actions { align-self: start; position: sticky; top: 24px; }
-.match-submit { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 17px 12px; border-radius: 12px; background: var(--match-blue); color: white; font-size: 14px; box-shadow: 0 1px 2px #0000000d; }
-.match-submit img { width: 18px; height: 18px; }
-.match-error { color: #b91c1c; font-size: 12px; line-height: 1.6; margin: 4px 0 0; }
-.match-submit-error { margin-top: 14px; }
-.match-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 40px max(24px, calc((100vw - 1152px) / 2)); background: var(--match-field); font-size: 12px; color: var(--match-muted); }
+.match-label-row > span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.match-description { margin-top: 16px; }
+
+.match-actions { margin-top: 16px; }
+.match-form .match-submit { width: 100%; min-height: 52px; border-radius: var(--radius-button); background: var(--ink); color: var(--volt); font-size: 16px; font-weight: 700; }
+.match-form .match-submit:active:not(:disabled) { background: var(--ink-raised); }
+.match-error { margin: 4px 0 0; color: var(--danger); font-size: 13px; line-height: 1.6; }
+.match-submit-error { margin-top: 12px; }
 .match-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .match-edit-state { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; line-height: 1.6; }
-.match-edit-state button { border: 0; cursor: pointer; font: inherit; }
-.match-page .match-edit-link { display: block; margin-top: 12px; padding: 12px; border: 1px solid var(--match-blue); border-radius: 10px; color: var(--match-blue); text-align: center; font-weight: 600; }
-.match-form .match-sport.is-selected:disabled { opacity: 1; }
-@media (max-width: 1100px) { .match-main { padding: 24px 32px 64px; } .match-header-inner { padding: 20px 32px; } .match-section { padding: 24px; } .match-sports { gap: 8px; } .match-form { gap: 24px; grid-template-columns: minmax(0, 1fr) 240px; } .match-schedule-grid { grid-template-columns: 1fr; } }
-@media (max-width: 800px) { .match-form { grid-template-columns: minmax(0, 1fr); } .match-actions { position: static; } .match-schedule-grid { grid-template-columns: 1fr 1fr; } .match-main h1 { font-size: 28px; } }
-@media (max-width: 540px) { .match-header-inner { min-height: 80px; padding: 20px; align-items: center; } .match-brand > span { display: none; } .match-main { padding: 24px 16px 48px; } .match-main h1 { font-size: 25px; } .match-intro { font-size: 13px; } .match-section { padding: 20px; } .match-section h2 { font-size: 16px; } .match-required { padding: 4px 6px; font-size: 9px; } .match-section-heading { gap: 8px; } .match-sports { grid-template-columns: repeat(3, 1fr); gap: 12px; } .match-schedule-grid { grid-template-columns: 1fr; } .match-footer { padding: 28px 20px; font-size: 11px; } }
-.match-ai-draft { margin-bottom: 24px; padding: 16px; border: 1px solid #dbeafe; border-radius: 12px; background: #eff6ff; overflow-wrap: anywhere; } .match-ai-draft p { margin: 8px 0 0; white-space: pre-wrap; }
+.match-edit-state button { min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-button); background: var(--ink); color: var(--volt); cursor: pointer; }
+.match-page .match-edit-link { display: flex; align-items: center; justify-content: center; min-height: 44px; margin-top: 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-button); color: var(--text); font-weight: 500; transition: border-color var(--motion); }
+.match-page .match-edit-link:active { background: var(--canvas); }
+@media (hover: hover) {
+  .match-form .match-sport:not(:disabled):not(.is-selected):hover { border-color: var(--ink); }
+  .match-form input:not(:disabled):not([aria-invalid=true]):hover, .match-form textarea:not(:disabled):not([aria-invalid=true]):hover, .match-form select:not(:disabled):not([aria-invalid=true]):hover { border-color: var(--ink); }
+  .match-form .match-small-button:not(:disabled):hover, .match-form .match-submit:not(:disabled):hover { background: var(--ink-raised); }
+  .match-form .match-facility button:not(:disabled):hover { border-color: var(--ink); }
+  .match-form .match-results button:hover { background: var(--line); }
+  .match-form .match-stepper button:not(:disabled):hover { background: var(--canvas); }
+  .match-form .match-levels button:not(:disabled):not(.is-selected):hover { background: var(--line); }
+  .match-page .match-edit-link:hover { border-color: var(--ink); }
+}
+@media (max-width: 599.98px) {
+  .match-main { padding: 16px 16px 48px; }
+  .match-main h1 { font-size: 22px; }
+  .match-section { padding: 16px; }
+  .match-step-block { padding: 16px; }
+  .match-step-block:not(:last-of-type)::before { display: none; }
+  .match-step-block + .match-step-block { border-top: 1px solid var(--line); }
+  .match-step-content { grid-column: 1 / -1; }
+  .match-step-heading h2 { font-size: 16px; }
+  .match-form .match-sport { padding: 0 10px; font-size: 13px; }
+  .match-sports { gap: 4px; }
+  .match-search { flex-wrap: wrap; }
+  .match-form select.sporty-district-select.match-region { flex-basis: 100%; width: 100%; }
+  .match-search > input { flex-basis: 0; }
+}
+@media (hover: hover) {
+  .match-stepper:hover { border-color: var(--ink); }
+}

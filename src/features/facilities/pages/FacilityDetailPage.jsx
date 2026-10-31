@@ -21,7 +21,7 @@ export default function FacilityDetailPage() {
     if (!Number.isSafeInteger(numericId) || numericId < 1) {
       setFacility(null);
       setStatus('error');
-      setError('잘못된 서비스 ID입니다.');
+      setError('시설 주소가 올바르지 않아요.');
       return undefined;
     }
 
@@ -65,12 +65,9 @@ export default function FacilityDetailPage() {
   return (
     <div className="fl-page">
       <Header />
-      <main className="fl-shell fd-shell">
-        <div className="fd-toolbar">
-          <Link className="fd-back" to="/facilities">← 체육시설 목록으로 돌아가기</Link>
-          <Link className="fd-home" to="/">← 홈으로 가기</Link>
-        </div>
-        {status === 'loading' && <p className="fl-empty" role="status">체육시설 상세 정보를 불러오고 있습니다.</p>}
+      <main className="fl-container fd-main">
+        <Link className="fd-back" to="/facilities">체육시설 목록으로 돌아가기</Link>
+        {status === 'loading' && <p className="fl-empty" role="status">체육시설 상세 정보를 불러오고 있어요.</p>}
         {status === 'error' && (
           <div className="fl-empty" role="alert">
             {error}
@@ -78,61 +75,49 @@ export default function FacilityDetailPage() {
           </div>
         )}
         {status === 'success' && facility && selected && (
-          <>
-            <article className="fd-hero">
-              <div className="fl-card-tags">
-                <span className="fl-tag">{facility.serviceType}</span>
-                <span className="fl-tag is-soft">공공체육시설</span>
+          <article className="fd-sheet">
+            <header className="fd-top">
+              <div className="fd-tags">
                 <span className={`fl-status${facility.closed ? ' is-closed' : ''}`}>{facility.status}</span>
-                <span className="fl-fee">{facility.paymentMethod}</span>
+                <span className="fd-tag">공공체육시설</span>
+                <span className="fd-tag">{facility.serviceType}</span>
+                <span className="fd-tag">{facility.paymentMethod}</span>
               </div>
               <h1>{facility.serviceName}</h1>
-              <ul className="fd-meta">
-                <li>장소 {[facility.region, facility.locationName].filter(Boolean).join(' ')}</li>
-                <li>운영시간 {hours}</li>
-                <li>연락처 {facility.contact}</li>
-              </ul>
-            </article>
+              <dl className="fd-facts">
+                <div><dt>장소</dt><dd>{[facility.region, facility.locationName].filter(Boolean).join(' ')}</dd></div>
+                <div><dt>운영시간</dt><dd>{hours}</dd></div>
+                <div><dt>연락처</dt><dd>{facility.contact}</dd></div>
+              </dl>
+            </header>
 
-            <section className="fd-panel" aria-labelledby="fd-date-title">
-              <div className="fd-panel-heading">
-                <h2 id="fd-date-title"><span>1</span> 날짜 선택</h2>
-                <p>접수 마감일 기준으로 앞으로 7일의 예약 가능 여부를 보여줍니다.</p>
-              </div>
+            <section className="fd-booking" aria-labelledby="fd-date-title">
+              <h2 id="fd-date-title">날짜 선택</h2>
               <ReservationDateStrip
                 facility={facility}
                 selectedKey={selected.key}
                 onSelect={(day) => setSelectedKey(day.key)}
               />
-            </section>
-
-            <section className="fd-panel" aria-labelledby="fd-slot-title">
-              <div className="fd-panel-heading">
-                <h2 id="fd-slot-title"><span>2</span> 선택한 날짜의 예약 정보 <em>{selected.displayDate} ({selected.weekday})</em></h2>
-                <p>코트별 실시간 대관 현황은 서울시 예약 페이지에서 확인할 수 있습니다.</p>
+              <div className="fd-picked">
+                <p className="fd-picked-date">
+                  {selected.displayDate} ({selected.weekday})
+                  <span className={`fl-status${selected.closed ? ' is-closed' : ''}`}>{selected.state}</span>
+                </p>
+                <p>접수 마감: {facility.reservationDeadlineAt || '정보없음'}</p>
               </div>
-              <div className="fd-slot">
-                <div>
-                  <p className="fd-slot-name">
-                    {facility.serviceName}
-                    <span className={`fl-status${selected.closed ? ' is-closed' : ''}`}>{selected.state}</span>
-                  </p>
-                  <p>운영 시간: {hours}</p>
-                  <p>접수 마감: {facility.reservationDeadlineAt || '정보없음'}</p>
-                </div>
-                <div className="fd-actions">
-                  {facility.url && (
-                    <a className="fl-create" href={facility.url} target="_blank" rel="noreferrer">예약 신청</a>
-                  )}
-                  {facility.closed ? (
-                    <span className="fl-closed">대관 마감</span>
-                  ) : (
-                    <button type="button" className="fl-detail" onClick={createMatch}>매치 생성</button>
-                  )}
-                </div>
+              <div className="fd-actions">
+                {facility.url && (
+                  <a className="fl-create" href={facility.url} target="_blank" rel="noreferrer">예약 신청</a>
+                )}
+                {facility.closed ? (
+                  <span className="fl-closed">대관 마감</span>
+                ) : (
+                  <button type="button" className="fl-detail" onClick={createMatch}>매치 생성</button>
+                )}
               </div>
+              <p className="fd-note">코트별 실시간 대관 현황은 서울시 예약 페이지에서 확인할 수 있어요.</p>
             </section>
-          </>
+          </article>
         )}
       </main>
       <Footer />

@@ -21,7 +21,8 @@ async function searchAndOpenEditor() {
   render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><MainPage /></MemoryRouter>);
   fireEvent.change(screen.getByLabelText(INPUT_LABEL), { target: { value: '송파구 초보 풋살' } });
   fireEvent.click(screen.getByRole('button', { name: 'AI 매치 검색' }));
-  fireEvent.click(await screen.findByRole('button', { name: /조건 직접 수정/ }));
+  const summary = within(await screen.findByRole('region', { name: 'AI가 분석한 나의 맞춤 조건' }));
+  fireEvent.click(summary.getByRole('button', { name: /조건 직접 수정/ }));
   return screen.getByRole('form', { name: '맞춤 조건 직접 수정' });
 }
 
@@ -95,6 +96,6 @@ test('[AI-02] 재검색에 실패하면 폼 안에 오류를 보여주고 폼을
 
   fireEvent.click(form.getByRole('button', { name: '이 조건으로 다시 찾기' }));
 
-  expect(await form.findByRole('alert')).toHaveTextContent('매치를 다시 찾지 못했습니다.');
+  expect(await form.findByRole('alert')).toHaveTextContent('매치를 다시 찾지 못했어요.');
   expect(form.getByLabelText('종목')).toHaveValue('FUTSAL');
 });

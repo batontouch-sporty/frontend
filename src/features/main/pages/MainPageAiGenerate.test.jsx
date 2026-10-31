@@ -37,7 +37,7 @@ test('[AI-01] 비로그인 상태로 생성하면 AI를 호출하지 않고 문�
 
   expect(await screen.findByRole('heading', { name: '로그인 화면' })).toBeInTheDocument();
   expect(onGenerate).not.toHaveBeenCalled();
-  expect(window.alert).toHaveBeenCalledWith('AI 매치 생성은 로그인 후 이용할 수 있습니다. 로그인 화면으로 이동합니다.');
+  expect(window.alert).toHaveBeenCalledWith('AI 매치 생성은 로그인 후 쓸 수 있어요. 로그인 화면으로 이동할게요.');
   expect(sessionStorage.getItem('aiDraftPrompt')).toBe(PROMPT);
 });
 

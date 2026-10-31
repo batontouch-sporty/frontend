@@ -106,3 +106,15 @@ test('재발급 중 로그아웃하면 뒤늦은 응답으로 세션을 복원�
   expect(localStorage.getItem('at')).toBeNull();
   expect(adapter).toHaveBeenCalledTimes(2);
 });
+
+test('공개 페이지 부가 조회는 세션이 끝나도 로그인으로 보내지 않고 토큰만 지운다', async () => {
+  window.history.replaceState({}, '', '/');
+  localStorage.removeItem('rt');
+  // jsdom은 이동 시도를 console.error로 알린다.
+  const navigation = jest.spyOn(console, 'error').mockImplementation(() => {});
+  adapter.mockImplementation(config => failure(config, 401));
+  await expect(api.get('/api/users/me', { skipSessionRedirect: true })).rejects.toBeDefined();
+  expect(localStorage.getItem('at')).toBeNull();
+  expect(navigation).not.toHaveBeenCalled();
+  navigation.mockRestore();
+});

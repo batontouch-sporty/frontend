@@ -10,10 +10,8 @@ test('sends only supported nonempty search fields and cancellation signal', asyn
   const signal = new AbortController().signal;
   const result = await fetchMatchList({ sportType: 'FUTSAL', titleKeyword: '', region: '성동구', status: 'CLOSED', isFree: 'Y' }, signal);
   expect(api.get).toHaveBeenCalledWith('/api/matches', { params: { sportType: 'FUTSAL', region: '성동구', status: 'CLOSED', isFree: true }, signal, timeout: 15000 });
-  expect(result[0]).toMatchObject({ id: 1, sport: '풋살', statusCode: 'RECRUITING', closed: false });
-  expect(result[0].schedule).toContain('19:30');
-  expect(result[0].occupancy).toBeUndefined();
-  expect(result[0].fee).toBeUndefined();
+  expect(result[0]).toMatchObject({ id: 1, format: '풋살', sportType: 'FUTSAL', statusCode: 'RECRUITING', closed: false, startAt: dto.startAt, isFree: null });
+  expect(result[0].currentParticipant).toBeUndefined();
 });
 
 test.each([['N', false], [false, false], ['', undefined]])('serializes fee selection %p', async (isFree, expected) => {
@@ -39,13 +37,16 @@ test('unknown and closed statuses cannot be joined', () => {
   expect(toMatchListItem({ ...dto, status: null }).closed).toBe(true);
 });
 
-test.each([[0, true, '무료', 0], [7, false, '유료', 7 / 12 * 100], [13, false, '유료', 100]])(
-  '서버의 실제 장소·요금·참여 인원을 카드로 전달한다 (%s명)', (count, isFree, fee, occupancy) => {
-    const result = toMatchListItem({ ...dto, region: '성동구', isFree, numCurrentParticipant: count });
-    expect(result).toMatchObject({ location: '성동구', fee, participants: `${count}/12명`, occupancy,
-      remaining: `잔여 ${Math.max(0, 12 - count)}명` });
+test.each([[0, true], [7, false], [13, false]])(
+  '서버의 실제 장소·요금·참여 인원을 MatchRow 모델로 전달한다 (%s명)', (count, isFree) => {
+    const result = toMatchListItem({ ...dto, region: '성동구', isFree, numCurrentParticipant: count, skillLevel: 'BEGINNER', genderGroup: 'MIXED' });
+    expect(result).toMatchObject({ region: '성동구', isFree, currentParticipant: count, maxParticipant: 12, level: '루키', genderGroupLabel: '혼성' });
   }
 );
+
+test.each([0, -1, 1.5, '1'])('rejects an unusable match ID %p', matchId => {
+  expect(() => toMatchListItem({ ...dto, matchId })).toThrow('매치 응답');
+});
 
 test('requires confirmed creation of participation', async () => {
   api.post.mockResolvedValue({ status: 201, data: { matchId: 1 } });

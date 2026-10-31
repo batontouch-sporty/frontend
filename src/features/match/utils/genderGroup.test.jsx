@@ -16,7 +16,7 @@ test.each(['MALE', 'FEMALE', 'MIXED'])('validates and submits selected gender %s
 });
 
 test.each(['', 'male', 'female', 'mixed', undefined, null, 123])('rejects invalid gender %p', genderGroup => {
-  expect(validateMatch({ ...initialMatchValues(match), genderGroup }).genderGroup).toBe('성별 구성을 선택해주세요.');
+  expect(validateMatch({ ...initialMatchValues(match), genderGroup }).genderGroup).toBe('성별 구성을 선택해 주세요.');
 });
 
 test('AI gender survives draft mapping, form initialization and payload conversion', () => {

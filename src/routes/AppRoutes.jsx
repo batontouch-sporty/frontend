@@ -13,6 +13,7 @@ import FacilityListPage from '../features/facilities/pages/FacilityListPage';
 import FacilityDetailPage from '../features/facilities/pages/FacilityDetailPage';
 import { draftAiMatch } from '../features/main/api/aiMatchApi';
 import AdminDashboardPage from '../features/admin/pages/AdminDashboardPage';
+import NotificationPage from '../features/notifications/pages/NotificationPage';
 
 export default function AppRoutes() {
   return (
@@ -27,6 +28,7 @@ export default function AppRoutes() {
       <Route path="/signup" element={<SignUpPage />} />
       {/* [USR-06 / PR-01] 본인 정보 조회 및 프로필 수정 API 연결. */}
       <Route path="/mypage" element={<MyPage />} />
+      <Route path="/notifications" element={<NotificationPage />} />
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
       {process.env.NODE_ENV === 'development' && <Route path="/mypage/preview" element={<MyPage preview />} />}
 
@@ -47,7 +49,7 @@ export default function AppRoutes() {
 
       <Route path="/profiles/:userId" element={<PageMessage>프로필 상세</PageMessage>} />
 
-      <Route path="*" element={<PageMessage>페이지를 찾을 수 없습니다.</PageMessage>} />
+      <Route path="*" element={<PageMessage>페이지를 찾을 수 없어요.</PageMessage>} />
     </Routes>
   );
 }

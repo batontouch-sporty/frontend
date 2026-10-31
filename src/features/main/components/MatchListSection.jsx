@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import MatchCard from './MatchCard';
+import MatchRow from './MatchRow';
 const SORT_OPTIONS = [['score', 'AI 적합도순'], ['startAt', '시간순'], ['distance', '거리순']];
 const MatchListSection = ({
   matches,
+  joins = {},
   onJoin
 }) => {
   // [AI-02] 'score' | 'startAt' | 'distance': 받은 추천 목록의 화면 정렬 기준. 서버에 재요청하지 않는다.
@@ -16,13 +17,13 @@ const MatchListSection = ({
   return (
     <section id="match-search-results" className="ms-results" aria-label="매치 검색 결과" tabIndex={-1}>
         <div className="ms-results-heading">
-            <h2><span className="ms-status-dot" />분석된 조건과 일치하는 매치 <strong>{matches.length}건</strong>을 발견했습니다</h2>
+            <h2>{matches.length ? <>조건에 맞는 매치 <strong>{matches.length}건</strong>을 찾았어요</> : '검색 결과'}</h2>
             <div className="ms-sort" role="group" aria-label="정렬 기준">
                 <span>정렬 기준:</span>
                 {SORT_OPTIONS.map(([value, label]) => <button key={value} type="button" aria-pressed={sort === value} onClick={() => setSort(value)}>{label}</button>)}
             </div>
         </div>
-        {ordered.length ? <div className="ms-card-grid">{ordered.map(match => <MatchCard key={match.id} match={match} onJoin={onJoin} />)}</div> : <p className="ms-empty">조건에 맞는 매치가 없습니다. 검색 조건을 변경해주세요.</p>}
+        {ordered.length ? <div className="ms-list">{ordered.map(match => <MatchRow key={match.id} match={match} showDate joinState={joins[match.id]} onJoin={onJoin} />)}</div> : <p className="ms-empty">조건에 맞는 매치가 없어요. 검색 조건을 바꿔 보세요.</p>}
     </section>
   );
 };

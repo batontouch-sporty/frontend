@@ -5,7 +5,7 @@ import MatchDetailPage from './MatchDetailPage';
 const previewMatch = {
   matchId: 101,
   title: '주말 저녁, 함께 즐기는 풋살 한 게임',
-  description: '승패보다 함께 뛰는 즐거움을 나누는 매치입니다.\n처음 오시는 분도 편하게 함께해 주세요. 서로 배려하며 즐겁게 운동해요!\n\n개인 운동화와 마실 물을 준비해 주세요.\n상세한 모임 안내는 경기 전에 함께 확인해 주세요.',
+  description: '승패보다 함께 뛰는 즐거움을 나누는 매치예요.\n처음 오시는 분도 편하게 함께해 주세요. 서로 배려하며 즐겁게 운동해요!\n\n개인 운동화와 마실 물을 준비해 주세요.\n상세한 모임 안내는 경기 전에 함께 확인해 주세요.',
   startAt: '2026-09-26T19:00:00',
   endAt: '2026-09-26T21:00:00',
   maxParticipant: 10,

@@ -1,38 +1,14 @@
 import DistrictSelect from '../../../components/common/DistrictSelect';
 import { useRef, useState } from 'react';
+import { SPORTS } from '../data/sports';
 import { initialMatchValues, SKILL_LEVELS, toMatchPayload, validateMatch } from '../utils/matchValidation';
-import futsal from '../assets/futsal.svg';
-import tennis from '../assets/tennis.svg';
-import badminton from '../assets/badminton.svg';
-import basketball from '../assets/basketball.svg';
-import running from '../assets/running.svg';
-import soccer from '../assets/soccer.svg';
-import baseball from '../assets/baseball.svg';
-import tableTennis from '../assets/table-tennis.svg';
-import volleyball from '../assets/volleyball.svg';
-import swimming from '../assets/swimming.svg';
-import submitIcon from '../assets/submit.svg';
 import '../css/match.css';
 
-const SPORTS = [
-  ['SOCCER', '축구', '필드/야외', soccer],
-  ['FUTSAL', '풋살', '인기 종목', futsal],
-  ['BASKETBALL', '농구', '3vs3 / 5vs5', basketball],
-  ['BASEBALL', '야구', '야구장', baseball],
-  ['TENNIS', '테니스', '단/복식', tennis],
-  ['BADMINTON', '배드민턴', '실내 체육관', badminton],
-  ['TABLE_TENNIS', '탁구', '단/복식', tableTennis],
-  ['VOLLEYBALL', '배구', '실내/야외', volleyball],
-  ['SWIMMING', '수영', '수영장', swimming],
-  ['RUNNING', '러닝', '트랙/야외', running],
-];
-
-function Section({ number, title, description, children }) {
-  return <section className="match-section" aria-labelledby={`match-section-${number}`}>
-    <div className="match-section-heading"><span className="match-step">{number}</span>
-      <div><h2 id={`match-section-${number}`}>{title}</h2>{description && <p>{description}</p>}</div>
-      <span className="match-required">필수 항목</span>
-    </div>{children}
+function Step({ number, title, description, children }) {
+  return <section className="match-step-block" aria-labelledby={`match-section-${number}`}>
+    <span className="match-step" aria-hidden="true">{number}</span>
+    <div className="match-step-heading"><h2 id={`match-section-${number}`}>{title}</h2>{description && <p>{description}</p>}</div>
+    <div className="match-step-content">{children}</div>
   </section>;
 }
 
@@ -78,7 +54,7 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
 
   async function search() {
     if (!searchFacilities) {
-      setSearchMessage('시설 검색을 준비 중입니다. 시설 상세 화면에서 시설을 선택한 후 매치를 개설해주세요.');
+      setSearchMessage('시설 검색을 준비 중이에요. 시설 상세 화면에서 시설을 선택한 후 매치를 개설해 주세요.');
       return;
     }
     const version = ++searchVersion.current;
@@ -87,9 +63,9 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
       const facilities = await searchFacilities({ query: query.trim(), region: region.trim() });
       if (version !== searchVersion.current) return;
       setResults(facilities);
-      if (!facilities.length) setSearchMessage('검색 결과가 없습니다. 다른 시설명이나 지역으로 검색해주세요.');
+      if (!facilities.length) setSearchMessage('검색 결과가 없어요. 다른 시설명이나 지역으로 검색해 주세요.');
     } catch (error) {
-      if (version === searchVersion.current) setSearchMessage(error.response?.status === 400 ? '시설 검색 조건을 확인해주세요.' : error.response?.status === 503 ? '공공데이터 연결이 원활하지 않습니다. 잠시 후 다시 검색해주세요.' : '시설을 불러오지 못했습니다. 잠시 후 다시 검색해주세요.');
+      if (version === searchVersion.current) setSearchMessage(error.response?.status === 400 ? '시설 검색 조건을 확인해 주세요.' : error.response?.status === 503 ? '공공데이터 연결이 원활하지 않아요. 잠시 후 다시 검색해 주세요.' : '시설을 불러오지 못했어요. 잠시 후 다시 검색해 주세요.');
     } finally { if (version === searchVersion.current) setSearching(false); }
   }
 
@@ -105,14 +81,14 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
     submitting.current = true; setPending(true);
     try { await onSubmit(toMatchPayload(values)); }
     catch (error) {
-      const messages = { 400: '매치 정보를 확인해주세요. 입력한 정보가 올바르지 않습니다.', 401: '로그인이 만료되었습니다. 다시 로그인해주세요.', 404: '선택한 시설을 찾을 수 없습니다. 시설을 다시 선택해주세요.' };
+      const messages = { 400: '매치 정보를 확인해 주세요. 입력한 정보가 올바르지 않아요.', 401: '로그인이 만료됐어요. 다시 로그인해 주세요.', 404: '선택한 시설을 찾을 수 없어요. 시설을 다시 선택해 주세요.' };
       if (isEdit) {
-        messages[403] = '이 매치를 수정할 권한이 없습니다.';
-        messages[404] = '매치를 찾을 수 없습니다. 삭제되었을 수 있습니다.';
-        setSubmitError(messages[error.response?.status] || '매치를 수정하지 못했습니다. 연결 상태를 확인하고 다시 시도해주세요.');
+        messages[403] = '이 매치를 수정할 권한이 없어요.';
+        messages[404] = '매치를 찾을 수 없어요. 삭제되었을 수 있어요.';
+        setSubmitError(messages[error.response?.status] || '매치를 수정하지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요.');
         return;
       }
-      setSubmitError(messages[error.response?.status] || (error.response || error.request ? '매치를 개설하지 못했습니다. 연결 상태를 확인하고 다시 시도해주세요.' : error.message || '매치를 개설하지 못했습니다. 다시 시도해주세요.'));
+      setSubmitError(messages[error.response?.status] || (error.response || error.request ? '매치를 개설하지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요.' : error.message || '매치를 개설하지 못했어요. 다시 시도해 주세요.'));
     } finally { submitting.current = false; setPending(false); }
   }
 
@@ -129,50 +105,58 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
   return <form className="match-form" ref={formRef} onSubmit={submit} noValidate>
     <fieldset className="match-fields" disabled={pending}>
       <legend className="match-sr-only">{isEdit ? '매치 수정 정보' : '매치 개설 정보'}</legend>
-      <Section number="1" title="운동 종목 선택" description={isEdit ? '운동 종목은 변경할 수 없습니다.' : '함께 즐기고 싶은 스포츠를 선택해주세요.'}>
+      <Step number="1" title="어떤 운동을 할까요?" description={isEdit ? '운동 종목은 변경할 수 없어요.' : undefined}>
         <div className="match-sports" role="group" aria-label="운동 종목">
-          {SPORTS.map(([value, label, hint, icon]) => <button key={value} type="button" disabled={isEdit} className={`match-sport ${values.sportType === value ? 'is-selected' : ''}`} aria-pressed={values.sportType === value} onClick={() => changeSport(value)}>
-            <span className="match-sport-icon" aria-hidden="true"><img src={icon} width="22" height="22" alt="" /></span><strong>{label}</strong><small>{hint}</small>
+          {SPORTS.map(([value, label, icon]) => <button key={value} type="button" disabled={isEdit} className={`match-sport ${values.sportType === value ? 'is-selected' : ''}`} aria-pressed={values.sportType === value} onClick={() => changeSport(value)}>
+            <img src={icon} width="18" height="18" alt="" />{label}
           </button>)}
         </div>
-      </Section>
-      <Section number="2" title="체육시설 및 구장 선택" description={isEdit ? '시설은 변경할 수 없습니다.' : undefined}>
-        {isEdit ? <div className="match-facility"><div><strong>{facility?.name || '시설명 정보 없음'}</strong><span className="match-facility-tag">기존 시설</span><p>{[facility?.region, facility?.locationName].filter(Boolean).join(' · ') || '등록된 장소 정보가 아직 없습니다.'}</p></div></div> : <>
-        <label className="match-sr-only" htmlFor="facility-region">지역</label>
-        <DistrictSelect id="facility-region" className="match-region" valueType="name" placeholder="전체 자치구" value={region} onChange={event => setRegion(event.target.value)} />
-        <label className="match-sr-only" htmlFor="facility-search">시설명</label>
-        <div className="match-search"><input id="facility-search" value={query} placeholder="시설명으로 검색" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); search(); } }} aria-invalid={!!errors.serviceId} aria-describedby={errors.serviceId ? 'error-serviceId' : undefined} />
-          <button type="button" className="match-small-button" onClick={search} disabled={searching}>{searching ? '검색 중…' : '시설 검색'}</button></div>
+      </Step>
+      <Step number="2" title="어디서 만날까요?" description={isEdit ? '시설은 변경할 수 없어요.' : undefined}>
+        {isEdit ? <div className="match-facility"><div><strong>{facility?.name || '시설명 정보 없음'}</strong><span className="match-facility-tag">기존 시설</span><p>{[facility?.region, facility?.locationName].filter(Boolean).join(' · ') || '등록된 장소 정보가 아직 없어요.'}</p></div></div> : <>
+        <div className="match-search">
+          <label className="match-sr-only" htmlFor="facility-region">지역</label>
+          <DistrictSelect id="facility-region" className="match-region" valueType="name" placeholder="전체 자치구" value={region} onChange={event => setRegion(event.target.value)} />
+          <label className="match-sr-only" htmlFor="facility-search">시설명</label>
+          <input id="facility-search" value={query} placeholder="시설명으로 검색" onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); search(); } }} aria-invalid={!!errors.serviceId} aria-describedby={errors.serviceId ? 'error-serviceId' : undefined} />
+          <button type="button" className="match-small-button" onClick={search} disabled={searching}>{searching ? '검색 중…' : '시설 검색'}</button>
+        </div>
         <p className="match-search-message" role="status">{searchMessage}</p>
         {results.length > 0 && <ul className="match-results">{results.map(item => <li key={item.serviceId}><button type="button" onClick={() => { setFacility(item); update('serviceId', item.serviceId); setResults([]); setSearchMessage(''); }}><strong>{item.name}</strong><span>{[item.region, item.locationName].filter(Boolean).join(' · ')}</span><span>선택</span></button></li>)}</ul>}
-        {facility ? <div className="match-facility"><div><strong>{facility.name}</strong><span className="match-facility-tag">선택한 시설</span><p>{[facility.region, facility.locationName].filter(Boolean).join(' · ')}</p></div><button type="button" onClick={() => { setFacility(null); update('serviceId', ''); }}>선택 해제</button></div> : <p className="match-empty">운동할 체육시설을 선택해주세요.</p>}
+        {facility ? <div className="match-facility"><div><strong>{facility.name}</strong><span className="match-facility-tag">선택한 시설</span><p>{[facility.region, facility.locationName].filter(Boolean).join(' · ')}</p></div><button type="button" onClick={() => { setFacility(null); update('serviceId', ''); }}>선택 해제</button></div> : <p className="match-empty">운동할 체육시설을 선택해 주세요.</p>}
         {errorText('serviceId')}
         </>}
-      </Section>
-      <Section number="3" title="일정 및 모집 인원 설정" description="경기 일정과 함께할 인원, 성별 구성, 실력 레벨을 정해주세요.">
-        <div className="match-schedule-grid"><div className="match-control"><label htmlFor="date">경기 날짜</label>
-        <input type="date" {...fieldProps('date', 'startAt')} />{errorText('startAt')}</div>
+      </Step>
+      <Step number="3" title="언제 시작하고 끝나나요?">
+        <div className="match-grid">
+          <div className="match-control"><label htmlFor="date">경기 날짜</label><input type="date" {...fieldProps('date', 'startAt')} />{errorText('startAt')}</div>
+          <div className="match-control"><label htmlFor="startTime">시작 시간</label><input type="time" {...fieldProps('startTime', 'startAt')} /></div>
+          <div className="match-control"><label htmlFor="endDate">종료 날짜 (비우면 경기 당일)</label><input type="date" {...fieldProps('endDate', 'endAt')} />{errorText('endAt')}</div>
+          <div className="match-control"><label htmlFor="endTime">종료 시간</label><input type="time" {...fieldProps('endTime', 'endAt')} /></div>
+        </div>
+      </Step>
+      <Step number="4" title="누구와 함께할까요?">
+        <div className="match-grid">
+          <div className="match-control"><label htmlFor="maxParticipant">모집 최대 인원 (방장 포함)</label><div className="match-stepper"><button type="button" aria-label="모집 인원 줄이기" disabled={Number(values.maxParticipant) <= 1} onClick={() => update('maxParticipant', Math.max(1, Number(values.maxParticipant) - 1))}>−</button><input type="number" min="1" step="1" {...fieldProps('maxParticipant')} /><span>명</span><button type="button" aria-label="모집 인원 늘리기" onClick={() => update('maxParticipant', Number(values.maxParticipant) + 1)}>+</button></div>{errorText('maxParticipant')}</div>
           <div className="match-control">
             <label htmlFor="genderGroup">성별 구성</label>
             {/* TODO: fieldProps('genderGroup')와 errorText('genderGroup')를 연결하세요. */}
             <select id="genderGroup" name="genderGroup" {...fieldProps('genderGroup')}>
-              <option value="" disabled>성별 구성을 선택해주세요</option>
+              <option value="" disabled>성별 구성을 선택해 주세요</option>
               <option value="MALE">남성</option>
               <option value="FEMALE">여성</option>
               <option value="MIXED">혼성</option>
             </select>
             {errorText('genderGroup')}
           </div>
-          <div className="match-control"><label htmlFor="maxParticipant">모집 최대 인원 (방장 포함)</label><div className="match-stepper"><button type="button" aria-label="모집 인원 줄이기" disabled={Number(values.maxParticipant) <= 1} onClick={() => update('maxParticipant', Math.max(1, Number(values.maxParticipant) - 1))}>−</button><input type="number" min="1" step="1" {...fieldProps('maxParticipant')} /><span>명</span><button type="button" aria-label="모집 인원 늘리기" onClick={() => update('maxParticipant', Number(values.maxParticipant) + 1)}>+</button></div>{errorText('maxParticipant')}</div>
-          <div className="match-time-grid"><div className="match-control"><label htmlFor="startTime">시작 시간</label><input type="time" {...fieldProps('startTime', 'startAt')} /></div><div className="match-control"><label htmlFor="endTime">종료 시간</label><input type="time" {...fieldProps('endTime', 'endAt')} /></div><div className="match-control match-end-date"><label htmlFor="endDate">종료 날짜 (미선택 시 경기 당일)</label><input type="date" {...fieldProps('endDate', 'endAt')} />{errorText('endAt')}</div></div>
-          <div className="match-control"><span id="match-level-label">경기 실력 레벨</span><div className="match-levels" role="group" aria-labelledby="match-level-label">{SKILL_LEVELS.map(level => <button type="button" key={level.value} aria-pressed={values.skillLevel === level.value} className={values.skillLevel === level.value ? 'is-selected' : ''} onClick={() => update('skillLevel', level.value)}>{level.label}</button>)}</div>{errorText('skillLevel')}</div>
         </div>
-      </Section>
-      <Section number="4" title="매치 상세 정보 & 수칙">
+        <div className="match-control match-level-control"><span id="match-level-label">경기 실력 레벨</span><div className="match-levels" role="group" aria-labelledby="match-level-label">{SKILL_LEVELS.map(level => <button type="button" key={level.value} aria-pressed={values.skillLevel === level.value} className={values.skillLevel === level.value ? 'is-selected' : ''} onClick={() => update('skillLevel', level.value)}><strong>{level.label}</strong><small>{level.hint}</small></button>)}</div>{errorText('skillLevel')}</div>
+      </Step>
+      <Step number="5" title="매치를 소개해 주세요">
         <div className="match-control"><div className="match-label-row"><label htmlFor="title">매치 제목</label><span>{values.title.length} / 50</span></div><input {...fieldProps('title')} maxLength="50" placeholder="예) 주말 저녁 가볍게 즐기는 풋살 친선 경기" />{errorText('title')}</div>
-        <div className="match-control match-description"><div className="match-label-row"><label htmlFor="description">상세 안내 및 매너 수칙</label><span>{values.description.length} / 500</span></div><textarea {...fieldProps('description')} maxLength="500" rows="6" placeholder={'함께할 분들에게 매치를 소개해주세요.\n준비물, 모임 장소, 경기 수칙 등을 안내하면 좋아요.'} />{errorText('description')}</div>
-      </Section>
+        <div className="match-control match-description"><div className="match-label-row"><label htmlFor="description">상세 안내 및 매너 수칙</label><span>{values.description.length} / 500</span></div><textarea {...fieldProps('description')} maxLength="500" rows="6" placeholder={'함께할 분들에게 매치를 소개해 주세요.\n준비물, 모임 장소, 경기 수칙 등을 안내하면 좋아요.'} />{errorText('description')}</div>
+      </Step>
     </fieldset>
-    <aside className="match-actions"><button className="match-submit" type="submit" disabled={pending}><img src={submitIcon} alt="" width="18" height="18" />{pending ? (isEdit ? '매치 저장 중…' : '매치 개설 중…') : submitLabel}</button><div role="alert">{submitError && <p className="match-error match-submit-error">{submitError}</p>}{Object.values(errors).some(Boolean) && <p className="match-error">입력 항목을 확인해주세요.</p>}</div></aside>
+    <div className="match-actions"><button className="match-submit" type="submit" disabled={pending}>{pending ? (isEdit ? '매치 저장 중…' : '매치 개설 중…') : submitLabel}</button><div role="alert">{submitError && <p className="match-error match-submit-error">{submitError}</p>}{Object.values(errors).some(Boolean) && <p className="match-error">입력 항목을 확인해 주세요.</p>}</div></div>
   </form>;
 }

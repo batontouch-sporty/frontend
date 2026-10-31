@@ -5,11 +5,13 @@ import AISearchBox from '../components/AISearchBox';
 import AIConditionSummary from '../components/AIConditionSummary';
 import AIConditionEditor from '../components/AIConditionEditor';
 import MatchListSection from '../components/MatchListSection';
+import MatchRow from '../components/MatchRow';
+import useMainSchedule from '../hooks/useMainSchedule';
 import api from '../../../api/axios';
 import { criteriaToConditions, searchMatchesByCriteria, toConditionSummary, toCriteria, toMatchCard } from '../api/aiMatchApi';
 import { prepareAiMatchDraft } from '../../match/utils/aiMatchDraft';
 import Header from '../../../components/layout/Header';
-import arrow from '../assets/arrow.svg';
+import { SPORTS } from '../../match/data/sports';
 import '../css/main.css';
 
 /**
@@ -32,13 +34,32 @@ const readSavedPrompt = () => {
   }
 };
 
+
+const SportShortcuts = () => <nav className="ms-sports" aria-label="종목 바로가기">
+    {SPORTS.map(([sport, name, icon]) => <Link key={sport} to={`/matches/search?sportType=${sport}`}><img src={icon} width="18" height="18" alt="" />{name}</Link>)}
+</nav>;
+
+const WeekSchedule = ({ title, status, days, hasBoard, joins, onJoin, onEdit }) => {
+  const heading = <div className="ms-week-head"><h2>{title}</h2><div>
+      {onEdit && <button type="button" onClick={onEdit}>조건 직접 수정</button>}
+      <Link to="/matches/search">전체 일정 보기</Link>
+  </div></div>;
+  if (status !== 'success') return <section className="ms-week">{heading}</section>;
+  if (!hasBoard) return <section className="ms-week">{heading}<div className="ms-week-message"><p>직접 열어 볼까요?</p><Link to="/matches/new">매치 개설</Link></div></section>;
+  return <section className="ms-week">{heading}
+    {days.length === 0 && <p className="ms-week-note">이번 주 다른 매치는 아직 없어요.</p>}
+    {days.map(day => <div className="ms-day" key={day.key}>
+      <h3>{day.label}</h3>
+      <div className="ms-list">{day.matches.map(match => <MatchRow key={match.id} match={match} joinState={joins[match.id]} onJoin={onJoin} />)}</div>
+    </div>)}
+  </section>;
+};
+
 const MainPage = ({
-  matches = [],
   conditions = criteriaToConditions(toCriteria(null)),
   onSearch,
   onGenerate,
   onEdit,
-  onJoin,
   pending = false
 }) => {
   // [AI-02] null | { matches: 배열, conditions: 배열 }: 변환된 검색 응답. null은 아직 검색하지 않은 상태다.
@@ -49,7 +70,16 @@ const MainPage = ({
   const [generating, setGenerating] = useState(false);
   // [AI-02][AI-03] ref<boolean>: 렌더링 전 연속 클릭도 차단하는 공통 잠금. 화면 표시용 state가 아니다.
   const searching = useRef(false);
-  const visibleMatches = searchResults?.matches ?? matches;
+  const { status: scheduleStatus, schedule, district, joins, join, reload } = useMainSchedule();
+  const visibleMatches = searchResults?.matches ?? [];
+  // AI 결과는 재검색하지 않으므로 신청한 행의 인원만 바로 반영한다.
+  const joinFromResults = async match => {
+    if (!await join(match)) return;
+    setSearchResults(previous => previous && {
+      ...previous,
+      matches: previous.matches.map(row => row.id === match.id && Number.isInteger(row.currentParticipant) ? { ...row, currentParticipant: row.currentParticipant + 1 } : row),
+    });
+  };
   const visibleConditions = searchResults?.conditions ?? conditions;
   const moveUrl = useNavigate();
   // [AI-01] string: 로그인 전에 저장한 생성 문장. 처음 화면을 열 때 한 번만 읽는다.
@@ -57,6 +87,10 @@ const MainPage = ({
   useEffect(() => {
     try { sessionStorage.removeItem(AI_PROMPT_KEY); } catch { /* 저장소를 못 쓰면 복원 없이 진행 */ }
   }, []);
+  // 검색 결과가 첫 화면 밖에 나오므로 결과로 이동한다.
+  useEffect(() => {
+    if (searchStatus === 'success') document.getElementById('match-search-results')?.scrollIntoView?.({ block: 'start' });
+  }, [searchStatus]);
   // [AI-02] 조건 직접 수정: 편집 폼 열림 여부 / 재검색 진행 여부 / 재검색 실패 문구
   const [editing, setEditing] = useState(false);
   const [editPending, setEditPending] = useState(false);
@@ -99,9 +133,9 @@ const MainPage = ({
       setSearchStatus('error');
       const message = error.response?.data?.message;
       if (typeof message === 'string' && message.trim()) throw new Error(message);
-      if (error.response?.status === 401) throw new Error('로그인이 필요하거나 인증이 만료되었습니다. 다시 로그인해주세요.');
-      if (error.response?.status === 500) throw new Error('추천 처리 중 오류가 발생했습니다. 잠시 후 다시 검색해주세요.');
-      if (error.response || error.request) throw new Error('매치를 불러오지 못했습니다. 연결 상태를 확인하고 다시 시도해주세요.');
+      if (error.response?.status === 401) throw new Error('로그인이 필요하거나 인증이 끝났어요. 다시 로그인해 주세요.');
+      if (error.response?.status === 500) throw new Error('추천을 처리하지 못했어요. 잠시 후 다시 검색해 주세요.');
+      if (error.response || error.request) throw new Error('매치를 불러오지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요.');
       throw error;
     }).finally(() => {
       searching.current = false;
@@ -121,7 +155,7 @@ const MainPage = ({
       setSearchStatus('success');
       setEditing(false);
     }).catch(() => {
-      setEditError('매치를 다시 찾지 못했습니다. 잠시 후 다시 시도해주세요.');
+      setEditError('매치를 다시 찾지 못했어요. 잠시 후 다시 시도해 주세요.');
     }).finally(() => {
       searching.current = false;
       setEditPending(false);
@@ -137,7 +171,7 @@ const MainPage = ({
     // [AI-01] 비로그인 사용자는 AI를 호출하지 않고 문장만 저장한 뒤 로그인 화면으로 보낸다.
     if (!localStorage.getItem('at')) {
       try { sessionStorage.setItem(AI_PROMPT_KEY, query); } catch { /* 저장 실패 시 문장 없이 이동 */ }
-      window.alert('AI 매치 생성은 로그인 후 이용할 수 있습니다. 로그인 화면으로 이동합니다.');
+      window.alert('AI 매치 생성은 로그인 후 쓸 수 있어요. 로그인 화면으로 이동할게요.');
       moveUrl('/login?redirect=%2F', { state: { from: '/' } });
       return;
     }
@@ -146,7 +180,7 @@ const MainPage = ({
     return Promise.resolve().then(() => {
       return onGenerate ? onGenerate(query) : undefined;
     }).then(result => {
-      if (onGenerate && result == null) throw new Error('매치 생성 조건 응답이 없습니다.');
+      if (onGenerate && result == null) throw new Error('매치 생성 조건 응답이 없어요.');
       const aiDraft = prepareAiMatchDraft(query, result);
       // 다른 라우트에는 props를 직접 넘길 수 없어 state를 사용한다.
       // MatchCreatePage가 state.aiDraft를 읽어 MatchForm의 initialValues/selectedFacility로 전달한다.
@@ -167,28 +201,43 @@ const MainPage = ({
   return (
     <div className="ms-page">
         <Header />
-        <main className="ms-container ms-main">
+        <main className="ms-main">
             <section className="ms-hero">
-                <h1>자연어로 말하듯 검색하면, AI가 딱 맞는 매치 조건을 찾아드립니다</h1>
-                <p>종목, 시간, 지역, 실력을 알려주세요. 나에게 맞는 매치를 한눈에 확인하세요.</p>
+                <div className="ms-container ms-hero-grid">
+                    <div className="ms-hero-left">
+                        <h1>어떤 운동 찾아요?</h1>
+                        <p>종목, 시간, 지역, 실력을 말하듯 적어 주세요.</p>
+                        <AISearchBox onSearch={searchHandler} onGenerate={generateHandler} initialQuery={savedPrompt} pending={pending || generating || editPending || searchStatus === 'loading'} generating={generating} />
+                    </div>
+                    <section className="ms-board" aria-labelledby="ms-board-title">
+                        <div className="ms-board-head">
+                            <h2 id="ms-board-title">{scheduleStatus === 'success' ? schedule.title : '오늘 모집 중'}</h2>
+                            {scheduleStatus === 'success' && schedule.scope && <span>{schedule.scope}</span>}
+                        </div>
+                        <div className="ms-board-body" aria-busy={scheduleStatus === 'loading'}>
+                            {scheduleStatus === 'loading' ? <p className="ms-board-message" role="status">일정을 불러오고 있어요.</p>
+                              : scheduleStatus === 'error' ? <div className="ms-board-message" role="alert">일정을 불러오지 못했어요.<button type="button" onClick={() => reload()}>다시 시도</button></div>
+                              : schedule.board.length === 0 ? <p className="ms-board-message">이번 주 모집 중인 매치가 아직 없어요.</p>
+                              : schedule.board.map(match => <MatchRow key={match.id} board match={match} mine={district} joinState={joins[match.id]} onJoin={join} />)}
+                        </div>
+                        <Link className="ms-board-all" to="/matches/search">전체 일정 보기</Link>
+                    </section>
+                </div>
             </section>
-            <AISearchBox onSearch={searchHandler} onGenerate={generateHandler} initialQuery={savedPrompt} pending={pending || generating || editPending || searchStatus === 'loading'} generating={generating} />
-            {/* 조건과 매치 목록은 같은 응답으로 함께 갱신해 서로 다른 검색 결과가 섞이지 않게 한다. */}
-            {/* [AI-02] 조건 직접 수정 중에는 요약 자리에 편집 폼을 보여준다. */}
-            {searchStatus !== 'loading' && searchStatus !== 'error' && (editing
-              ? <AIConditionEditor initialCriteria={editCriteria} onApply={applyEditHandler}
-                  onCancel={() => { setEditing(false); setEditError(''); }} pending={editPending} error={editError} />
-              : visibleConditions.length > 0 && <AIConditionSummary conditions={visibleConditions} onEdit={editHandler} />)}
-            {/* 메인에서는 추천 매치를 보여주고, 전체 매치 탐색은 아래 링크로 별도 페이지에 연결한다. */}
-            {searchStatus === 'loading' ? <p role="status">조건에 맞는 매치를 찾고 있습니다.</p> : searchStatus === 'idle' && visibleMatches.length === 0 ? <p className="ms-empty">원하는 조건을 입력하면 매치 검색 결과를 확인할 수 있어요.</p> : searchStatus !== 'error' && <MatchListSection matches={visibleMatches} onJoin={onJoin} />}
+            <div className="ms-container">
+                <SportShortcuts />
+                {/* 조건과 매치 목록은 같은 응답으로 함께 갱신해 서로 다른 검색 결과가 섞이지 않게 한다. */}
+                {/* [AI-02] 조건 직접 수정 중에는 요약 자리에 편집 폼을 보여준다. */}
+                {editing && <AIConditionEditor initialCriteria={editCriteria} onApply={applyEditHandler}
+                  onCancel={() => { setEditing(false); setEditError(''); }} pending={editPending} error={editError} />}
+                {searchStatus === 'loading' ? <p className="ms-loading" role="status">조건에 맞는 매치를 찾고 있어요.</p>
+                  : searchStatus === 'success' ? <>
+                    {!editing && visibleConditions.length > 0 && <AIConditionSummary conditions={visibleConditions} onEdit={editHandler} />}
+                    <MatchListSection matches={visibleMatches} joins={joins} onJoin={joinFromResults} />
+                  </> : <WeekSchedule title={schedule.title === '이번 주 모집 중' && scheduleStatus === 'success' ? '다음 일정' : '이번 주 모집 중'} status={scheduleStatus} days={schedule.days} hasBoard={schedule.board.length > 0} joins={joins} onJoin={join} onEdit={editing ? undefined : editHandler} />}
+            </div>
         </main>
         <Footer />
-        {/* [EM-02] 전체 운동 매칭 목록 조회
-            여기서는 목록 화면으로 이동만 한다. 담당자는 /matches/search 페이지에서 전체 목록 API를 연결한다. */}
-        <Link className="ms-floating" to="/matches/search">
-            전체 매치 목록 보러가기
-            <img src={arrow} width="10" height="4" alt="" />
-        </Link>
     </div>
   );
 };

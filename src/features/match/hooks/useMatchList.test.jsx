@@ -1,8 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import useMatchList from './useMatchList';
-import { loadMyPage } from '../../mypage/api/myPageApi';
-jest.mock('../../mypage/api/myPageApi', () => ({ loadMyPage: jest.fn() }));
+import { loadMyMatches, loadMyPage } from '../../mypage/api/myPageApi';
+jest.mock('../../mypage/api/myPageApi', () => ({ loadMyPage: jest.fn(), loadMyMatches: jest.fn() }));
 import { fetchMatchList, fetchRecommendedMatches, requestMatchParticipation } from '../api/matchListApi';
 
 jest.mock('../api/matchListApi', () => ({
@@ -14,6 +14,7 @@ beforeEach(() => {
   jest.clearAllMocks(); localStorage.clear();
   fetchMatchList.mockResolvedValue([]); fetchRecommendedMatches.mockResolvedValue([]);
   loadMyPage.mockResolvedValue({ profile: { nickname: '회원', district: 'MAPO', preferenceSports: ['TENNIS'] } });
+  loadMyMatches.mockResolvedValue([]);
 });
 
 test('loads the signed-in profile and applies preferred sports', async () => {
@@ -36,7 +37,7 @@ test('profile failures are distinct from signed-out state', async () => {
   expect(result.current.profile).toBeNull();
 });
 
-test('sport selection applies immediately while preserving unapplied sidebar edits', async () => {
+test('sport selection applies immediately while preserving unapplied filter edits', async () => {
   const { result } = renderHook(useMatchList, { wrapper });
   await waitFor(() => expect(result.current.status).toBe('success'));
   act(() => result.current.onFilterChange('region', '마포구'));
@@ -105,12 +106,61 @@ test('joins once, shows 501 failure, and allows retry without a false success', 
   await waitFor(() => expect(result.current.status).toBe('success'));
   act(() => { result.current.onJoin(1); result.current.onJoin(1); });
   expect(requestMatchParticipation).toHaveBeenCalledTimes(1);
-  expect(result.current.joiningId).toBe(1);
+  expect(result.current.joins[1]).toEqual({ status: 'joining' });
   await act(async () => rejectJoin({ response: { status: 501 } }));
-  expect(result.current.joinMessage).toContain('준비 중');
-  expect(result.current.joiningId).toBeNull();
+  expect(result.current.joins[1]).toEqual({ status: 'error', message: expect.stringContaining('준비 중') });
   requestMatchParticipation.mockResolvedValue({ matchId: 1 });
   await act(async () => result.current.onJoin(1));
-  expect(result.current.joinMessage).toBe('참가 신청이 완료되었습니다.');
+  expect(result.current.joins[1]).toEqual({ status: 'done' });
   expect(fetchMatchList).toHaveBeenCalledTimes(2);
+});
+
+test('reloading after a join keeps the rows on screen', async () => {
+  localStorage.setItem('at', 'test-token');
+  fetchMatchList.mockResolvedValue([{ id: 1, statusCode: 'RECRUITING' }]);
+  requestMatchParticipation.mockResolvedValue({ matchId: 1 });
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('success'));
+  let finishReload;
+  fetchMatchList.mockImplementationOnce(() => new Promise(resolve => { finishReload = resolve; }));
+  await act(async () => { result.current.onJoin(1); });
+  expect(result.current.status).toBe('success');
+  expect(result.current.matches).toHaveLength(1);
+  await act(async () => finishReload([{ id: 1, statusCode: 'CLOSED' }]));
+  expect(result.current.matches[0].statusCode).toBe('CLOSED');
+  expect(result.current.joins[1]).toEqual({ status: 'done' });
+});
+
+test('merges restored match states and lets a fresh join win', async () => {
+  localStorage.setItem('at', 'test-token');
+  loadMyMatches.mockResolvedValue([{ matchId: 1, role: 'PARTICIPANT' }, { matchId: 2, role: 'OWNER' }]);
+  requestMatchParticipation.mockResolvedValue({ matchId: 1 });
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.joins[2]).toEqual({ status: 'owner' }));
+  expect(result.current.joins[1]).toEqual({ status: 'done', restored: true });
+  await act(async () => result.current.onJoin(1));
+  expect(result.current.joins[1]).toEqual({ status: 'done' });
+});
+
+test('date tabs filter on the client, reset paging and clear with reset', async () => {
+  const today = new Date();
+  const key = new Date(today - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  fetchMatchList.mockResolvedValue([
+    ...Array.from({ length: 7 }, (_, i) => ({ id: i + 1, startAt: `${key}T1${i}:00:00` })),
+    { id: 8, startAt: '2099-01-01T10:00:00' },
+  ]);
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('success'));
+  expect(result.current.totalCount).toBe(8);
+  const calls = fetchMatchList.mock.calls.length;
+  act(() => result.current.onLoadMore());
+  act(() => result.current.onDateTab('today'));
+  expect(result.current.dateTab).toBe('today');
+  expect(result.current.totalCount).toBe(7);
+  expect(result.current.matches).toHaveLength(6);
+  expect(fetchMatchList).toHaveBeenCalledTimes(calls);
+  act(() => result.current.onReset());
+  await waitFor(() => expect(result.current.status).toBe('success'));
+  expect(result.current.dateTab).toBe('');
+  expect(result.current.totalCount).toBe(8);
 });

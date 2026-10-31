@@ -40,7 +40,7 @@ export default function MatchCreatePage({ searchFacilities = searchMatchFaciliti
           <Link to="/">홈</Link><span>/</span><Link to="/mypage">매치 관리</Link><span>/</span><span aria-current="page">새 매치 개설</span>
         </nav>
         <h1>새로운 매치 개설하기</h1>
-        <p className="match-intro">원하는 종목과 장소, 일정을 등록하고 함께 경기할 신뢰성 높은 스포츠 메이트를 매칭하세요.</p>
+        <p className="match-intro">종목, 장소, 일정을 순서대로 정하면 바로 모집을 시작할 수 있어요.</p>
         <MatchForm
           key={location.key}        
           onSubmit={handleSubmit}

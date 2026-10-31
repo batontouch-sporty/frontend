@@ -24,7 +24,7 @@ test('loads existing fields and saves once before navigating to detail', async (
   expect(screen.getByRole('status')).toHaveTextContent('불러오는 중');
   expect(await screen.findByLabelText('매치 제목')).toHaveValue(match.title);
   expect(screen.getByLabelText('경기 날짜')).toHaveValue('2026-10-01');
-  expect(screen.getByLabelText('종료 날짜 (미선택 시 경기 당일)')).toHaveValue('2026-10-02');
+  expect(screen.getByLabelText('종료 날짜 (비우면 경기 당일)')).toHaveValue('2026-10-02');
   expect(screen.getByLabelText('성별 구성')).toHaveValue('FEMALE');
   expect(screen.getByRole('button', { name: /테니스/ })).toBeDisabled();
   expect(screen.queryByRole('button', { name: '시설 검색' })).not.toBeInTheDocument();
@@ -46,13 +46,13 @@ test('redirects anonymous users before fetching', async () => {
 
 test.each([false, null])('blocks editing when isOwner is %s', async isOwner => {
   getMatchDetail.mockResolvedValue({ ...match, isOwner }); showPage();
-  expect(await screen.findByRole('alert')).toHaveTextContent('권한이 없습니다');
+  expect(await screen.findByRole('alert')).toHaveTextContent('권한이 없어요');
   expect(screen.queryByLabelText('매치 제목')).not.toBeInTheDocument();
 });
 
 test.each([403, 404])('displays lookup error %s without a form', async status => {
   getMatchDetail.mockRejectedValue({ response: { status } }); showPage();
-  expect(await screen.findByRole('alert')).toHaveTextContent(status === 403 ? '권한이 없습니다' : '찾을 수 없습니다');
+  expect(await screen.findByRole('alert')).toHaveTextContent(status === 403 ? '권한이 없어요' : '찾을 수 없어요');
   expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
 });
 
@@ -81,9 +81,9 @@ test.each([400, 403, 404, 500])('preserves edits after save error %s', async sta
 
 test('rejects invalid dates before saving', async () => {
   showPage();
-  fireEvent.change(await screen.findByLabelText('종료 날짜 (미선택 시 경기 당일)'), { target: { value: '2026-09-30' } });
+  fireEvent.change(await screen.findByLabelText('종료 날짜 (비우면 경기 당일)'), { target: { value: '2026-09-30' } });
   fireEvent.click(screen.getByRole('button', { name: '매치 수정 완료하기' }));
-  expect(screen.getByText('종료 일시는 시작 일시보다 늦어야 합니다.')).toBeInTheDocument();
+  expect(screen.getByText('종료 일시는 시작 일시보다 늦어야 해요.')).toBeInTheDocument();
   expect(modifyMatch).not.toHaveBeenCalled();
 });
 

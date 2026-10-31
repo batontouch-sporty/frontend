@@ -111,11 +111,11 @@ export async function fetchFacility(serviceId, signal) {
 
 export function facilityRequestError(error, kind = 'list') {
   const status = error.response?.status;
-  if (kind === 'detail' && status === 400) return '잘못된 서비스 ID입니다.';
-  if (kind === 'detail' && status === 404) return '체육서비스를 찾을 수 없습니다.';
-  if (status === 400) return '검색 조건을 확인해주세요.';
-  if (status === 503) return '공공데이터 연결이 원활하지 않습니다. 잠시 후 다시 검색해주세요.';
-  return '체육시설을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
+  if (kind === 'detail' && status === 400) return '시설 주소가 올바르지 않아요.';
+  if (kind === 'detail' && status === 404) return '체육시설을 찾을 수 없어요.';
+  if (status === 400) return '검색 조건을 확인해 주세요.';
+  if (status === 503) return '공공데이터 연결이 원활하지 않아요. 잠시 후 다시 검색해 주세요.';
+  return '체육시설을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.';
 }
 
 function formatClock(value) {

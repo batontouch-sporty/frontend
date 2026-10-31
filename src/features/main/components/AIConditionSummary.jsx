@@ -1,4 +1,3 @@
-import check from '../assets/check.svg';
 import { toConditionSummary } from '../api/aiMatchApi';
 import '../css/main.css';
 
@@ -12,22 +11,11 @@ const AIConditionSummary = ({
   const summaryConditions = toConditionSummary(conditions);
   return (
     <section className="ms-summary ms-panel" aria-label="AI가 분석한 나의 맞춤 조건">
-        <div className="ms-summary-heading">
-            <div className="ms-summary-title">
-                <img src={check} width="20" height="20" alt="" />
-                <div>
-                    <h2>AI가 분석한 나의 맞춤 조건</h2>
-                    <p>입력한 문장을 바탕으로 최적의 탐색 조건을 완성했어요</p>
-                </div>
-            </div>
-            <button type="button" className="ms-edit" onClick={onEdit} disabled={!onEdit}><span aria-hidden="true">⚙</span> 조건 직접 수정</button>
-        </div>
-        <dl className="ms-conditions">{summaryConditions.map(condition => <div key={condition.label} className="ms-condition">
+        <dl className="ms-conditions">{summaryConditions.filter(condition => condition.value !== '미지정').map(condition => <div key={condition.label} className="ms-condition">
                 <dt>{condition.label}</dt>
-                <dd>
-                    {condition.value}
-                </dd>
+                <dd>{condition.value}</dd>
             </div>)}</dl>
+        <button type="button" className="ms-edit" onClick={onEdit} disabled={!onEdit}>조건 직접 수정</button>
     </section>
   );
 };

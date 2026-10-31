@@ -31,7 +31,7 @@ const LogoutButton = ({ onLogout }) => {
         if (response.status === 204) {
           clearSession();
         } else {
-          setError('로그아웃 응답을 확인하지 못했습니다.');
+          setError('로그아웃 응답을 확인하지 못했어요.');
         }
       })
       .catch(requestError => {
@@ -39,7 +39,7 @@ const LogoutButton = ({ onLogout }) => {
         if (requestError.response?.status === 401) {
           clearSession();
         } else {
-          setError('로그아웃하지 못했습니다. 잠시 후 다시 시도해주세요.');
+          setError('로그아웃하지 못했어요. 잠시 후 다시 시도해주세요.');
         }
       })
       .finally(() => {

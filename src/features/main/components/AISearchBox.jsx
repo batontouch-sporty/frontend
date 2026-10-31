@@ -1,9 +1,5 @@
 import { useId, useState } from 'react';
-import spark from '../assets/spark.svg';
-import search from '../assets/search.svg';
-import plus from '../assets/plus.svg';
 import '../css/main.css';
-const DEFAULT_KEYWORDS = ['이번 주말', '강남 풋살', '초보 환영', '실내 구장'];
 
 // [AI-02] AI 매치 검색 / [AI-03] AI 매치 생성 — 공통 자연어 입력창
 // 입력·버튼·오류 표시만 담당한다. API 주소나 이동 경로는 이곳이 아닌 MainPage/API 모듈에 연결한다.
@@ -12,7 +8,6 @@ const DEFAULT_KEYWORDS = ['이번 주말', '강남 풋살', '초보 환영', '�
 const AISearchBox = ({
   onSearch,
   onGenerate,
-  keywords = DEFAULT_KEYWORDS,
   pending = false,
   generating = false,
   initialQuery = ''
@@ -27,41 +22,28 @@ const AISearchBox = ({
     if (!action || !query.trim() || pending) return;
     setError('');
     return Promise.resolve().then(() => action(query.trim())).catch(error => {
-      setError(error.message || '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      setError(error.message || '요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.');
     });
   };
   return (
-    <form className="ms-search ms-panel" onSubmit={event => {
+    <form className="ms-search" onSubmit={event => {
     event.preventDefault();
     actionHandler(onSearch);
   }}>
-        <div className="ms-search-row">
-            <span className="ms-spark">
-                <img src={spark} width="20" height="20" alt="" />
-            </span>
-            <div className="ms-query-field">
-                <label htmlFor={id}>원하는 매치 조건을 자연스럽게 설명해 주세요</label>
-                <div className="ms-query-input">
-                    <input id={id} value={query} onChange={event => setQuery(event.target.value)} placeholder="예: 이번 주말 강남에서 풋살 초보 매치 찾아줘" disabled={pending} />
-                    <button type="button" aria-label="검색어 지우기" onClick={() => setQuery('')} disabled={pending || !query}>✕</button>
-                </div>
+        <div className="ms-search-panel">
+            <label htmlFor={id}>원하는 매치 조건을 자연스럽게 설명해 주세요</label>
+            <div className="ms-query-input">
+                <input id={id} value={query} onChange={event => setQuery(event.target.value)} placeholder="예: 토요일 저녁 마포구 풋살 초보" disabled={pending} />
+                {query && <button type="button" aria-label="검색어 지우기" onClick={() => setQuery('')} disabled={pending}>✕</button>}
             </div>
         </div>
-        <div className="ms-search-bottom">
-            <div className="ms-keywords">
-                <span>추천 키워드:</span>
-                {keywords.map(keyword => <button key={keyword} type="button" disabled={pending} onClick={() => setQuery(previous => previous ? `${previous} ${keyword}` : keyword)}>{keyword}</button>)}
-            </div>
-            <div className="ms-search-actions">
-                <button className="ms-primary" type="submit" disabled={!onSearch || !query.trim() || pending}>
-                    <img src={search} width="16" height="16" alt="" />
-                    {pending && !generating ? '검색 중…' : 'AI 매치 검색'}
-                </button>
-                <button className="ms-generate" type="button" disabled={!onGenerate || !query.trim() || pending} onClick={() => actionHandler(onGenerate)}>
-                    <img src={plus} width="16" height="16" alt="" />
-                    {generating ? '조건 분석 중…' : 'AI 매치 생성'}
-                </button>
-            </div>
+        <div className="ms-search-actions">
+            <button className="ms-primary" type="submit" disabled={!onSearch || !query.trim() || pending}>
+                {pending && !generating ? '검색 중…' : 'AI 매치 검색'}
+            </button>
+            <button className="ms-generate" type="button" disabled={!onGenerate || !query.trim() || pending} onClick={() => actionHandler(onGenerate)}>
+                {generating ? '조건 분석 중…' : 'AI 매치 생성'}
+            </button>
         </div>
         {error && <p className="ms-error" role="alert">{error}</p>}
     </form>
