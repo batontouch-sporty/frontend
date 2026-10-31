@@ -38,7 +38,7 @@ export default function useMainSchedule() {
       if (controller.signal.aborted) return;
       // 만료된 토큰이 정리됐으면 공개 조회로 한 번 더 시도한다.
       if (hadToken && !localStorage.getItem('at')) { load({ quiet }); return; }
-      if (!quiet) setStatus('error');
+      setStatus(current => (current === 'loading' ? 'error' : current));
     }
   }, []);
 

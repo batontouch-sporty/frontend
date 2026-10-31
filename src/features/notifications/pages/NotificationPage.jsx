@@ -53,7 +53,7 @@ export default function NotificationPage() {
     return () => controller.abort();
   }, [load, token]);
 
-  if (!token) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!token || !localStorage.getItem('at')) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
   const open = async notification => {
     setReadError('');
