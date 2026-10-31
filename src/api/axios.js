@@ -30,10 +30,10 @@ api.interceptors.request.use(config => {
 });
 
 // [USR-05] 재발급 인증 실패 시에만 세션을 정리
+export const clearSession = () => ['at', 'rt', 'userId'].forEach(key => localStorage.removeItem(key));
+
 const expireSession = ({ skipSessionRedirect } = {}) => {
-  localStorage.removeItem('at');
-  localStorage.removeItem('rt');
-  localStorage.removeItem('userId');
+  clearSession();
   // 공개 페이지의 부가 조회는 세션만 정리하고 화면을 유지한다.
   if (!skipSessionRedirect && window.location.pathname !== '/login') {
     const from = window.location.pathname + window.location.search;

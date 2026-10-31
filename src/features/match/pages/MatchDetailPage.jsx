@@ -151,8 +151,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   async function handleLeave() {
     if (preview || busy.current || match.isOwner === true || match.isParticipant !== true) return;
     if (!localStorage.getItem('at')) {
-      window.alert('매치에서 탈퇴하려면 로그인이 필요해요.');
-      login();
+      login('매치에서 탈퇴하려면 로그인이 필요해요.');
       return;
     }
     if (!window.confirm('이 매치에서 탈퇴할까요?')) return;
@@ -170,8 +169,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
       const code = error.response?.data?.code;
       if (statusCode === 401) {
         localStorage.removeItem('at');
-        window.alert('인증이 만료됐어요. 다시 로그인해 주세요.');
-        login();
+        login('인증이 만료됐어요. 다시 로그인해 주세요.');
         return;
       }
       if (statusCode === 403) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { clearSession } from '../../../api/axios';
 import { fetchMatchList, fetchRecommendedMatches, requestMatchParticipation, matchRequestError } from '../api/matchListApi';
 import { loadMyPage } from '../../mypage/api/myPageApi';
 import useMyMatchStates from '../../main/hooks/useMyMatchStates';
@@ -133,7 +134,7 @@ export default function useMatchList() {
       if (!mounted.current) return;
       setJoins(previous => ({ ...previous, [matchId]: { status: 'error', message: matchRequestError(error, 'join') } }));
       if (error.response?.status === 401) {
-        localStorage.removeItem('at');
+        clearSession();
         const from = location.pathname + location.search;
         navigate(`/login?redirect=${encodeURIComponent(from)}`, { state: { from } });
       }

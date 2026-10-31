@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import NotificationPage from './NotificationPage';
 import { fetchNotifications, fetchUnreadCount, markNotificationRead } from '../api/notificationApi';
@@ -57,4 +57,14 @@ test('조회 실패는 다시 시도할 수 있고 빈 목록은 매치 찾기�
   fireEvent.click(await screen.findByRole('button', { name: '다시 시도' }));
   expect(await screen.findByRole('link', { name: '매치 찾기', current: false })).toBeInTheDocument();
   expect(screen.getByText('아직 받은 알림이 없어요.')).toBeInTheDocument();
+});
+
+test('다른 탭에서 계정이 바뀌면 이전 알림을 비우고 새 계정으로 다시 조회한다', async () => {
+  fetchNotifications.mockResolvedValueOnce([unread]).mockReturnValueOnce(new Promise(() => {}));
+  show();
+  expect(await screen.findByText('참가가 확정됐어요.')).toBeInTheDocument();
+  localStorage.setItem('at', 'other-account');
+  fireEvent(window, new StorageEvent('storage', { key: 'at' }));
+  await waitFor(() => expect(screen.queryByText('참가가 확정됐어요.')).not.toBeInTheDocument());
+  expect(fetchNotifications).toHaveBeenCalledTimes(2);
 });

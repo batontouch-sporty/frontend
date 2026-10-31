@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { clearSession } from '../../../api/axios';
 import { districts } from '../../../constants/districts';
 import { matchRequestError, requestMatchParticipation } from '../../match/api/matchListApi';
 import { loadMyPage } from '../../mypage/api/myPageApi';
@@ -81,7 +82,7 @@ export default function useMainSchedule() {
     } catch (error) {
       setJoins(previous => ({ ...previous, [match.id]: { status: 'error', message: matchRequestError(error, 'join') } }));
       if (error.response?.status === 401) {
-        localStorage.removeItem('at');
+        clearSession();
         moveUrl('/login?redirect=%2F', { state: { from: '/' } });
       }
     } finally {

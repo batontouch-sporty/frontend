@@ -11,16 +11,7 @@ import api from '../../../api/axios';
 import { criteriaToConditions, searchMatchesByCriteria, toConditionSummary, toCriteria, toMatchCard } from '../api/aiMatchApi';
 import { prepareAiMatchDraft } from '../../match/utils/aiMatchDraft';
 import Header from '../../../components/layout/Header';
-import futsal from '../../match/assets/futsal.svg';
-import soccer from '../../match/assets/soccer.svg';
-import basketball from '../../match/assets/basketball.svg';
-import baseball from '../../match/assets/baseball.svg';
-import tennis from '../../match/assets/tennis.svg';
-import badminton from '../../match/assets/badminton.svg';
-import tableTennis from '../../match/assets/table-tennis.svg';
-import volleyball from '../../match/assets/volleyball.svg';
-import swimming from '../../match/assets/swimming.svg';
-import running from '../../match/assets/running.svg';
+import { SPORTS } from '../../match/data/sports';
 import '../css/main.css';
 
 /**
@@ -43,11 +34,9 @@ const readSavedPrompt = () => {
   }
 };
 
-const SPORT_ICONS = { FUTSAL: futsal, SOCCER: soccer, BASKETBALL: basketball, BASEBALL: baseball, TENNIS: tennis, BADMINTON: badminton, TABLE_TENNIS: tableTennis, VOLLEYBALL: volleyball, SWIMMING: swimming, RUNNING: running };
-const SPORT_NAMES = { FUTSAL: '풋살', SOCCER: '축구', BASKETBALL: '농구', BASEBALL: '야구', TENNIS: '테니스', BADMINTON: '배드민턴', TABLE_TENNIS: '탁구', VOLLEYBALL: '배구', SWIMMING: '수영', RUNNING: '러닝' };
 
 const SportShortcuts = () => <nav className="ms-sports" aria-label="종목 바로가기">
-    {Object.entries(SPORT_ICONS).map(([sport, icon]) => <Link key={sport} to={`/matches/search?sportType=${sport}`}><img src={icon} width="18" height="18" alt="" />{SPORT_NAMES[sport]}</Link>)}
+    {SPORTS.map(([sport, name, icon]) => <Link key={sport} to={`/matches/search?sportType=${sport}`}><img src={icon} width="18" height="18" alt="" />{name}</Link>)}
 </nav>;
 
 const WeekSchedule = ({ title, status, days, hasBoard, joins, onJoin, onEdit }) => {
@@ -101,7 +90,7 @@ const MainPage = ({
   // 검색 결과가 첫 화면 밖에 나오므로 결과로 이동한다.
   useEffect(() => {
     if (searchStatus === 'success') document.getElementById('match-search-results')?.scrollIntoView?.({ block: 'start' });
-  }, [searchStatus, searchResults]);
+  }, [searchStatus]);
   // [AI-02] 조건 직접 수정: 편집 폼 열림 여부 / 재검색 진행 여부 / 재검색 실패 문구
   const [editing, setEditing] = useState(false);
   const [editPending, setEditPending] = useState(false);

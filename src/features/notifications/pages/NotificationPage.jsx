@@ -22,6 +22,7 @@ export default function NotificationPage() {
   const [status, setStatus] = useState('loading');
   const [notifications, setNotifications] = useState([]);
   const [readError, setReadError] = useState('');
+  const [token, setToken] = useState(() => localStorage.getItem('at'));
 
   const load = useCallback(signal => {
     setStatus('loading');
@@ -34,14 +35,25 @@ export default function NotificationPage() {
     });
   }, []);
 
+  // 다른 탭에서 로그아웃하거나 계정을 바꾸면 이전 계정의 알림을 비운다.
   useEffect(() => {
-    if (!localStorage.getItem('at')) return undefined;
+    const sync = event => {
+      if (event.key !== 'at' && event.key !== null) return;
+      setNotifications([]);
+      setToken(localStorage.getItem('at'));
+    };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+
+  useEffect(() => {
+    if (!token) return undefined;
     const controller = new AbortController();
     load(controller.signal);
     return () => controller.abort();
-  }, [load]);
+  }, [load, token]);
 
-  if (!localStorage.getItem('at')) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!token) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
   const open = async notification => {
     setReadError('');
