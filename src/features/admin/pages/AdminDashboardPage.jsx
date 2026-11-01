@@ -4,6 +4,7 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import { getCurrentUser, getUserStats, getMatchStats, queryInstant, queryRange } from '../api/adminApi';
 import RequestPanel, { errorKind, useRequest } from '../components/RequestPanel';
+import MsaMonitoringDashboard from '../components/MsaMonitoringDashboard';
 import '../css/adminDashboard.css';
 
 const sagaLabels = { requested: '탈퇴 요청', succeeded: '탈퇴 성공', rejected: '탈퇴 거절', timedOut: '탈퇴 시간 초과', inProgress: '진행 중' };
@@ -284,25 +285,30 @@ export default function AdminDashboardPage() {
   return <div className="admin-dashboard">
     <Header />
     <main className="admin-dashboard-main">
-      <div className="admin-dashboard-band">
+      {!authorized && <div className="admin-dashboard-band">
         <div className="admin-dashboard-inner">
           <nav aria-label="현재 위치"><Link to="/">홈</Link><span> / 관리자 대시보드</span></nav>
           <h1>관리자 대시보드</h1>
-          {authorized && <p className="admin-dashboard-note">전체 기간의 누적 통계예요.</p>}
         </div>
-      </div>
-      <div className="admin-dashboard-inner admin-dashboard-body">
+      </div>}
+      {!authorized && <div className="admin-dashboard-inner admin-dashboard-body">
         {access.kind === 'loading' && <p role="status">관리자 권한을 확인하는 중이에요.</p>}
         {access.kind === 'forbidden' && <p role="alert">관리자 접근 권한이 없어요.</p>}
         {access.kind === 'unavailable' && <p role="alert">회원 조회 연동을 확인할 수 없어요. API 경로와 서비스 준비 상태를 확인해주세요.</p>}
         {access.kind === 'error' && <p role="alert">관리자 권한을 확인하지 못했어요. 연결 상태를 확인해주세요.</p>}
         {access.kind === 'sessionChanged' && <p role="alert">로그인 계정이 바뀌었어요. 다시 확인해주세요.</p>}
         {['unavailable', 'error', 'sessionChanged'].includes(access.kind) && <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 시도</button>}
-        {authorized && <>
+      </div>}
+      {authorized && <>
+        <MsaMonitoringDashboard sessionSignal={access.sessionSignal} />
+        <div className="admin-dashboard-inner msa-existing">
+          <div className="section-heading"><div><p className="section-kicker">03 / OPERATIONS</p><h2>기존 관리자 누적 통계</h2><p className="section-desc">회원·매치·탈퇴 Saga 집계를 운영 메트릭과 구분해 유지합니다.</p></div><span className="section-aside">A28 · A29</span></div>
           <AdminStats sessionSignal={access.sessionSignal} />
-          <Monitoring sessionSignal={access.sessionSignal} />
-        </>}
-      </div>
+          <details className="advanced"><summary><div><strong>PromQL 고급 조회</strong><span>기존 즉시 조회(A30)와 범위 조회(A31)</span></div></summary>
+            <div className="advanced-body"><Monitoring sessionSignal={access.sessionSignal} /></div>
+          </details>
+        </div>
+      </>}
     </main>
     <Footer />
   </div>;

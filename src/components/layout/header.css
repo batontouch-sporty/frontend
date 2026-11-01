@@ -22,9 +22,11 @@
 .sporty-header-auth-menu { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .sporty-header-auth-menu a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 14px; border-radius: var(--radius-button); font-size: 13px; font-weight: 500; white-space: nowrap; }
 .sporty-header .sporty-header-auth-menu .sporty-header-auth-login { color: var(--on-ink); }
+.sporty-header .sporty-header-auth-menu .sporty-header-auth-admin { border: 1px solid #495461; background: var(--ink-raised); color: var(--on-ink); }
 .sporty-header .sporty-header-auth-menu .sporty-header-auth-primary { background: var(--volt); color: var(--ink); }
 .sporty-header .sporty-header-search-button:active { background: var(--ink-raised); border-color: var(--on-ink); opacity: .7; }
 .sporty-header .sporty-header-auth-menu .sporty-header-auth-login:active { background: var(--ink); }
+.sporty-header .sporty-header-auth-menu .sporty-header-auth-admin:active { border-color: var(--volt); }
 .sporty-header .sporty-header-auth-menu .sporty-header-auth-primary:active { background: var(--volt-press); }
 .sporty-header-bell { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: var(--radius-button); }
 .sporty-header-bell span { position: absolute; top: 2px; right: 0; min-width: 20px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--volt); color: var(--ink); font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
@@ -37,7 +39,12 @@
   .sporty-header-bell:hover { background: var(--ink-raised); }
   .sporty-header-global-search:hover { border-color: var(--on-ink); }
   .sporty-header .sporty-header-auth-menu .sporty-header-auth-login:hover { background: var(--ink-raised); }
+  .sporty-header .sporty-header-auth-menu .sporty-header-auth-admin:hover { border-color: var(--volt); }
   .sporty-header .sporty-header-auth-menu .sporty-header-auth-primary:hover { background: var(--volt-press); }
+}
+@media (min-width: 900px) and (max-width: 1099.98px) {
+  .sporty-header--admin .sporty-header-search { display: none; }
+  .sporty-header--admin .sporty-header-auth-menu { margin-left: auto; }
 }
 @media (max-width: 899.98px) {
   .sporty-header-inner { flex-wrap: wrap; gap: 0 16px; padding-block: 8px; }
@@ -49,4 +56,6 @@
 }
 @media (max-width: 599.98px) {
   .sporty-header-container { padding-inline: 16px; }
+  .sporty-header--admin .sporty-header-auth-menu { order: 2; width: 100%; margin-left: 0; justify-content: flex-end; }
+  .sporty-header--admin .sporty-header-nav { order: 3; margin-inline: 0; overflow-x: auto; }
 }
