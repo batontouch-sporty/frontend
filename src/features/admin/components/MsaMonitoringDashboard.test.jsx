@@ -60,11 +60,11 @@ test('HTTP·JVM 지표는 0, 미수집, 단위와 서비스 레이블을 구분�
     if (query.includes('process_cpu_usage')) return Promise.resolve([aggregate('user-service', 0.12)]);
     if (query.includes('jvm_gc_pause_seconds_count')) return Promise.resolve([aggregate('user-service', 0)]);
     if (query.includes('jvm_threads_live_threads')) return Promise.resolve([aggregate('user-service', 18)]);
-    return Promise.resolve([aggregate('user-service', 0)]);
+    return Promise.resolve([aggregate('user-service', 2)]);
   });
   render(<MsaMonitoringDashboard />);
   await waitFor(() => expect(screen.getAllByText('275 ms').length).toBeGreaterThan(0));
-  expect(screen.getAllByText('0.00 RPS').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('2.00 RPS').length).toBeGreaterThan(0);
   expect(screen.getAllByText('0.0%').length).toBeGreaterThan(0);
   const rows = screen.getAllByRole('row');
   expect(within(rows[2]).getAllByText('미수집').length).toBeGreaterThan(0);
@@ -73,6 +73,55 @@ test('HTTP·JVM 지표는 0, 미수집, 단위와 서비스 레이블을 구분�
   expect(screen.getByText('12.0%')).toBeInTheDocument();
   expect(screen.getByText('0.00 /s')).toBeInTheDocument();
   expect(screen.getByText('18')).toBeInTheDocument();
+});
+
+test('HTTP 조회식의 모든 Selector는 Actuator를 제외하고 5분 창을 유지한다', async () => {
+  render(<MsaMonitoringDashboard />);
+  await waitFor(() => expect(queryInstant).toHaveBeenCalledTimes(8));
+  const http = queryInstant.mock.calls.map(([{ query }]) => query)
+    .filter(query => query.includes('http_server_requests_seconds_'));
+  expect(http).toHaveLength(3);
+  for (const query of http) {
+    const selectors = query.match(/http_server_requests_seconds_(?:count|bucket)\{[^}]+\}/g);
+    expect(selectors.length).toBeGreaterThan(0);
+    selectors.forEach(selector => {
+      expect(selector).toContain('job="sporty-services"');
+      expect(selector).toContain('uri!~"/actuator.*"');
+    });
+    expect(query).toContain('[5m]');
+    expect(query).toContain('by (application');
+  }
+  expect(http.find(query => query.includes('status=~"5.."')).match(/uri!~"\/actuator\.\*"/g)).toHaveLength(3);
+});
+
+test('요청량 0은 실제 0으로, 같은 구간의 P95·5xx는 요청 없음으로 표시한다', async () => {
+  queryInstant.mockImplementation(({ query }) => {
+    if (query === 'up') return Promise.resolve([up('user-service', 1)]);
+    if (query.includes('http_server_requests_seconds_count') && !query.includes('status=~')) return Promise.resolve([aggregate('user-service', 0)]);
+    if (query.includes('histogram_quantile')) return Promise.resolve([aggregate('user-service', 'NaN')]);
+    if (query.includes('status=~')) return Promise.resolve([aggregate('user-service', 'NaN')]);
+    return Promise.resolve([]);
+  });
+  render(<MsaMonitoringDashboard />);
+  await waitFor(() => expect(screen.getAllByText('0.00 RPS').length).toBeGreaterThan(0));
+  expect(screen.getAllByText('요청 없음').length).toBeGreaterThan(0);
+  expect(screen.queryByText(/NaN%|NaN ms|Infinity ms/)).not.toBeInTheDocument();
+});
+
+test('비즈니스 시계열 부재와 비유한 값은 0으로 추정하지 않는다', async () => {
+  queryInstant.mockImplementation(({ query }) => {
+    if (query === 'up') return Promise.resolve([up('user-service', 1), up('match-service', 0)]);
+    if (query.includes('histogram_quantile')) return Promise.resolve([aggregate('user-service', 'Inf')]);
+    if (query.includes('status=~')) return Promise.resolve([aggregate('user-service', 'NaN')]);
+    return Promise.resolve([]);
+  });
+  render(<MsaMonitoringDashboard />);
+  await waitFor(() => expect(screen.getAllByText('데이터 없음').length).toBeGreaterThan(0));
+  const rows = screen.getAllByRole('row');
+  expect(within(rows[1]).getByText('UP')).toBeInTheDocument();
+  expect(within(rows[2]).getByText('DOWN')).toBeInTheDocument();
+  expect(within(rows[2]).getAllByText('서비스 DOWN').length).toBeGreaterThan(0);
+  expect(screen.queryByText(/NaN%|Infinity ms|0 ms/)).not.toBeInTheDocument();
 });
 
 test('서비스 타깃이 하나도 없으면 정상 개수를 0으로 단정하지 않는다', async () => {

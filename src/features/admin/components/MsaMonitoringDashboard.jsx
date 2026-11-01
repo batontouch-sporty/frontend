@@ -28,9 +28,9 @@ const serviceMetric = item => item.metric?.job === 'sporty-services'
 const serviceSeries = (data, selected) => data.filter(item => serviceMetric(item)
   && (selected === 'all' || item.metric.application === selected));
 const metricQueries = {
-  rps: 'sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services"}[5m]))',
-  p95: 'histogram_quantile(0.95, sum by (application, le) (rate(http_server_requests_seconds_bucket{job="sporty-services"}[5m])))',
-  errors: 'sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",status=~"5.."}[5m])) / sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services"}[5m])) or on (application) (0 * sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services"}[5m])))',
+  rps: 'sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*"}[5m]))',
+  p95: 'histogram_quantile(0.95, sum by (application, le) (rate(http_server_requests_seconds_bucket{job="sporty-services",uri!~"/actuator.*"}[5m])))',
+  errors: '(sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*",status=~"5.."}[5m])) or on (application) (0 * sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*"}[5m])))) / sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*"}[5m]))',
   heap: 'sum by (application) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
   cpu: 'max by (application) (process_cpu_usage{job="sporty-services"})',
   gc: 'sum by (application) (rate(jvm_gc_pause_seconds_count{job="sporty-services"}[5m]))',
@@ -38,9 +38,12 @@ const metricQueries = {
 };
 
 // Prometheus 설정의 application 레이블로 비즈니스 서비스를 식별한다.
+const sampleNumber = raw => typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))
+  ? Number(raw) : null;
+
 export function statusFromUp(result, serviceId) {
   const samples = result.filter(item => serviceMetric(item) && item.metric.application === serviceId)
-    .map(item => Number(item.value?.[1])).filter(value => value === 0 || value === 1);
+    .map(item => sampleNumber(item.value?.[1])).filter(value => value === 0 || value === 1);
   if (samples.length === 0) return 'missing';
   if (samples.every(value => value === 0)) return 'down';
   if (samples.some(value => value === 0)) return 'partial';
@@ -93,15 +96,21 @@ function metricValue(request, serviceId) {
   // PromQL의 by(application) 집계 결과에는 job 레이블이 남지 않는다.
   const values = request.data.filter(item => services.some(([id]) => item.metric?.application === id)
     && (serviceId === 'all' || item.metric.application === serviceId))
-    .map(item => Number(item.value?.[1])).filter(Number.isFinite);
+    .map(item => sampleNumber(item.value?.[1])).filter(value => value !== null);
   return values.length ? values : null;
 }
 
-function displayedMetric(request, serviceId, key) {
+function displayedMetric(request, serviceId, key, rpsRequest, upState) {
+  if (!request) return '조회 중';
   if (request?.kind === 'loading') return '조회 중';
   if (request?.kind === 'error') return '조회 실패';
+  if (upState === 'down') return '서비스 DOWN';
+  if (upState === 'missing') return '미수집';
+  const http = ['rps', 'p95', 'errors'].includes(key);
+  const rps = http && key !== 'rps' ? metricValue(rpsRequest, serviceId) : null;
+  if (rps && rps.every(value => value === 0)) return '요청 없음';
   const values = metricValue(request, serviceId);
-  if (!values) return '미수집';
+  if (!values) return http ? '데이터 없음' : '미수집';
   const value = key === 'rps' || key === 'heap' || key === 'gc' || key === 'threads'
     ? values.reduce((sum, item) => sum + item, 0) : Math.max(...values);
   if (key === 'heap') return `${(value / 1024 / 1024).toFixed(1)} MiB`;
@@ -195,7 +204,7 @@ function UnlinkedArea({ tab }) {
       <article className="panel chart-card"><div className="chart-header"><div><h3 className="panel-title">{chart}</h3><p className="panel-sub">계측 확인 후 A31 시계열 연결</p></div><span className="chart-key">{unlinked}</span></div><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>메트릭 미연동</div></div></article>
       <article className="panel"><div className="panel-head"><div><h3 className="panel-title">{summary}</h3><p className="panel-sub">실제 데이터 확인 전까지 값을 표시하지 않습니다.</p></div><span className="tiny-tag">미연동</span></div><div className="info-callout"><strong>계측 대기</strong><br />{message}</div></article>
     </div>
-    <div className="panel msa-secondary-panel"><h3 className="panel-title">{detail}</h3><p className="panel-sub">Backend #50·PR #51의 공통 수집 범위 밖에 있는 지표는 계측 확인 후 연결합니다.</p><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>데이터 미연동</div></div></div>
+    <div className="panel msa-secondary-panel"><h3 className="panel-title">{detail}</h3><p className="panel-sub">해당 지표는 아직 수집되지 않습니다. 메트릭 계측 및 수집 설정을 확인해 주세요.</p><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>데이터 미연동</div></div></div>
   </>;
 }
 
@@ -214,7 +223,7 @@ function DetailData({ tab, history, selected }) {
 function JvmArea({ metrics, selected }) {
   const rows = services.filter(([id]) => selected === 'all' || selected === id);
   return <div className="content-grid">
-    <article className="panel chart-card"><div className="panel-head"><div><h3 className="panel-title">JVM · 리소스</h3><p className="panel-sub">Backend #50 공통 계측 · A30 현재 값</p></div><span className="tiny-tag">A30</span></div>
+    <article className="panel chart-card"><div className="panel-head"><div><h3 className="panel-title">JVM · 리소스</h3><p className="panel-sub">서비스별 현재 수집 값</p></div><span className="tiny-tag">A30</span></div>
       <div className="scroll-table"><table className="detail-table"><thead><tr><th scope="col">서비스</th><th scope="col">Heap 사용</th><th scope="col">CPU</th><th scope="col">GC 빈도</th><th scope="col">스레드</th></tr></thead><tbody>
         {rows.map(([id]) => <tr key={id}><td>{id}</td><td>{displayedMetric(metrics.heap, id, 'heap')}</td><td>{displayedMetric(metrics.cpu, id, 'cpu')}</td><td>{displayedMetric(metrics.gc, id, 'gc')}</td><td>{displayedMetric(metrics.threads, id, 'threads')}</td></tr>)}
       </tbody></table></div></article>
@@ -237,6 +246,8 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
   const observedCount = upCount + downCount;
   const summary = instant.kind === 'loading' ? '조회 중' : instant.kind === 'error' ? '조회 실패'
     : observedCount === 0 ? '미수집' : `${upCount} / ${observedCount}`;
+  const displayHttp = (key, id) => displayedMetric(metrics[key], id, key, metrics.rps,
+    instant.kind === 'success' ? (id === 'all' ? (observedCount ? undefined : 'missing') : statusFromUp(instant.data, id)) : instant.kind);
 
   const selectTab = (next, focus = false) => {
     setTab(next);
@@ -265,15 +276,15 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
     <div className="admin-dashboard-inner msa-content">
       <section className="kpi-grid" aria-label="운영 요약">
         <Kpi label="정상 서비스" value={summary} icon="✓" foot={instant.kind === 'success' ? `수집 ${observedCount} · DOWN ${downCount} · 미수집 ${missingCount}` : '서비스 상태 조회'} tone={downCount ? 'is-danger' : missingCount ? 'is-warn' : ''} />
-        <Kpi label="전체 요청량" value={displayedMetric(metrics.rps, selected, 'rps')} icon="↗" foot="수집된 서비스의 5분 평균 합계" />
-        <Kpi label="P95 응답시간" value={displayedMetric(metrics.p95, selected, 'p95')} icon="◷" foot="서비스별 P95 중 최대 · ms" />
-        <Kpi label="HTTP 5xx" value={displayedMetric(metrics.errors, selected, 'errors')} icon="!" foot="서비스별 5xx 오류율 중 최대" />
+        <Kpi label="전체 요청량" value={displayHttp('rps', selected)} icon="↗" foot="수집된 서비스의 5분 평균 합계" />
+        <Kpi label="P95 응답시간" value={displayHttp('p95', selected)} icon="◷" foot="서비스별 P95 중 최대 · ms" />
+        <Kpi label="HTTP 5xx" value={displayHttp('errors', selected)} icon="!" foot="서비스별 5xx 오류율 중 최대" />
         <Kpi label="Kafka Lag" value={unlinked} icon="▤" foot="Consumer Lag Exporter 확인 필요" tone="is-muted" />
       </section>
       <section className="section" aria-labelledby="msa-services-title"><div className="section-heading"><div><p className="section-kicker">01 / LIVE OVERVIEW</p><h2 id="msa-services-title">서비스별 상태</h2><p className="section-desc">UP·DOWN·미수집을 분리하고, 선택한 서비스를 강조합니다.</p></div><span className="section-aside">5개 비즈니스 서비스</span></div>
         <div className="panel"><div className="panel-head"><div><h3 className="panel-title">서비스 운영 현황</h3><p className="panel-sub">상태는 Prometheus up, 성능은 HTTP 계측으로 확인합니다.</p></div><span className="tiny-tag">A30</span></div>
-          <div className="service-table-wrap"><table className="service-table"><thead><tr><th scope="col">서비스</th><th scope="col">상태</th><th scope="col">요청량</th><th scope="col">P95</th><th scope="col">5xx 오류율</th></tr></thead><tbody>{services.map(([id, type]) => <tr key={id} className={selected === id ? 'selected-row' : ''}><td><span className="service-name">{id}</span><span className="service-type">{type}</span></td><td><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></td><td>{displayedMetric(metrics.rps, id, 'rps')}</td><td>{displayedMetric(metrics.p95, id, 'p95')}</td><td>{displayedMetric(metrics.errors, id, 'errors')}</td></tr>)}</tbody></table></div>
-          <div className="service-mobile">{services.map(([id, type]) => <div className="service-item" key={id}><div className="service-item-head"><div><span className="service-name">{id}</span><span className="service-type">{type}</span></div><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></div><div className="service-item-data"><div><span>요청량</span><strong>{displayedMetric(metrics.rps, id, 'rps')}</strong></div><div><span>P95</span><strong>{displayedMetric(metrics.p95, id, 'p95')}</strong></div><div><span>5xx</span><strong>{displayedMetric(metrics.errors, id, 'errors')}</strong></div></div></div>)}</div>
+          <div className="service-table-wrap"><table className="service-table"><thead><tr><th scope="col">서비스</th><th scope="col">상태</th><th scope="col">요청량</th><th scope="col">P95</th><th scope="col">5xx 오류율</th></tr></thead><tbody>{services.map(([id, type]) => <tr key={id} className={selected === id ? 'selected-row' : ''}><td><span className="service-name">{id}</span><span className="service-type">{type}</span></td><td><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></td><td>{displayHttp('rps', id)}</td><td>{displayHttp('p95', id)}</td><td>{displayHttp('errors', id)}</td></tr>)}</tbody></table></div>
+          <div className="service-mobile">{services.map(([id, type]) => <div className="service-item" key={id}><div className="service-item-head"><div><span className="service-name">{id}</span><span className="service-type">{type}</span></div><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></div><div className="service-item-data"><div><span>요청량</span><strong>{displayHttp('rps', id)}</strong></div><div><span>P95</span><strong>{displayHttp('p95', id)}</strong></div><div><span>5xx</span><strong>{displayHttp('errors', id)}</strong></div></div></div>)}</div>
         </div>
       </section>
       <section className="section" aria-labelledby="msa-metrics-title"><div className="section-heading"><div><p className="section-kicker">02 / METRICS</p><h2 id="msa-metrics-title">상세 모니터링</h2><p className="section-desc">운영 흐름별로 필요한 지표를 살펴봅니다.</p></div><span className="section-aside">{rangeLabels[range]}</span></div>

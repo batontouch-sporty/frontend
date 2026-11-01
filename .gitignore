@@ -34,3 +34,6 @@ coverage
 playwright-report
 test-results
 dist-e2e
+
+# Local design exploration; the approved UI lives in React.
+docs/design-exploration/sporty-msa-monitoring.html
