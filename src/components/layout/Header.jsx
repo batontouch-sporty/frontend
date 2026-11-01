@@ -1,8 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import api from '../../api/axios';
 import { fetchUnreadCount, NOTIFICATIONS_CHANGED } from '../../features/notifications/api/notificationApi';
 import headerSearch from './assets/header-search.svg';
 import './header.css';
+
+const readSession = () => ({
+  at: localStorage.getItem('at')?.trim(),
+  rt: localStorage.getItem('rt'),
+  userId: localStorage.getItem('userId'),
+});
+const sameSession = (a, b) => a.at === b.at && a.rt === b.rt && a.userId === b.userId;
+const getHeaderUser = signal => api.get('/user-service/api/users/me', { signal, skipSessionRedirect: true })
+  .then(({ data, config }) => ({
+    user: data,
+    authorization: config?.headers?.get?.('Authorization') ?? config?.headers?.Authorization,
+    retried: config?._retry === true,
+  }));
 
 // [#54][FC-01] Router 내부에서 <Header />로 사용한다. main.css 없이도 독립적으로 표시된다.
 export default function Header({ children, onFacilitySearch }) {
@@ -10,22 +24,58 @@ export default function Header({ children, onFacilitySearch }) {
   const location = useLocation();
   // [#54][USR-02] 상단 메뉴 표시용 로그인 상태. 로그인 페이지가 저장하는 at 유무를 사용한다.
   // 실제 API 접근 권한/토큰 만료 검증은 서버가 담당한다.
-  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(localStorage.getItem('at')?.trim()));
+  const [session, setSession] = useState(readSession);
+  const sessionRef = useRef(session);
+  const [approvedAdmin, setApprovedAdmin] = useState(null);
+  const isLoggedIn = Boolean(session.at);
+  const syncSession = useCallback(() => {
+    const current = readSession();
+    if (sameSession(sessionRef.current, current)) return;
+    sessionRef.current = current;
+    setApprovedAdmin(null);
+    setSession(current);
+  }, []);
   useEffect(() => {
-    const syncLoginState = () => setIsLoggedIn(Boolean(localStorage.getItem('at')?.trim()));
     const storageHandler = event => {
-      if (event.key === 'at' || event.key === null) syncLoginState();
+      if (event.key === null || ['at', 'rt', 'userId'].includes(event.key)) syncSession();
     };
     // [#54] 다른 탭의 로그인/로그아웃과 화면 복귀 시 상태를 다시 읽는다.
     window.addEventListener('storage', storageHandler);
-    window.addEventListener('focus', syncLoginState);
+    window.addEventListener('focus', syncSession);
+    const visibleHandler = () => {
+      if (document.visibilityState === 'visible') syncSession();
+    };
+    document.addEventListener('visibilitychange', visibleHandler);
     // 공통 레이아웃에서 헤더가 유지되는 경우에도 경로 이동 후 인증 상태를 갱신한다.
-    syncLoginState();
+    syncSession();
     return () => {
       window.removeEventListener('storage', storageHandler);
-      window.removeEventListener('focus', syncLoginState);
+      window.removeEventListener('focus', syncSession);
+      document.removeEventListener('visibilitychange', visibleHandler);
     };
-  }, [location.key]);
+  }, [location.key, syncSession]);
+  useEffect(() => {
+    if (!session.at) return undefined;
+    const controller = new AbortController();
+    setApprovedAdmin(null);
+    Promise.resolve().then(() => {
+      if (!controller.signal.aborted) return getHeaderUser(controller.signal);
+      return undefined;
+    }).then(result => {
+      if (controller.signal.aborted || !result) return;
+      const current = readSession();
+      const sameAccount = current.rt === session.rt && current.userId === session.userId;
+      const tokenMatchesRequest = Boolean(current.at) && result.authorization === `Bearer ${current.at}`;
+      const continuousToken = current.at === session.at || (Boolean(session.rt) && result.retried);
+      if (sameAccount && tokenMatchesRequest && continuousToken && result.user?.role === 'ADMIN') {
+        setApprovedAdmin(current);
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setApprovedAdmin(null);
+    });
+    return () => controller.abort();
+  }, [session]);
+  const showAdmin = isLoggedIn && approvedAdmin && sameSession(approvedAdmin, readSession());
   // 로그인 사용자의 안 읽은 알림 수. 조회 실패는 배지만 숨기고 헤더 동작에는 영향을 주지 않는다.
   const [unreadCount, setUnreadCount] = useState(0);
   useEffect(() => {
@@ -54,7 +104,7 @@ export default function Header({ children, onFacilitySearch }) {
   };
 
   return (
-        <header className="sporty-header">
+        <header className={`sporty-header${showAdmin ? ' sporty-header--admin' : ''}`}>
             <div className="sporty-header-container sporty-header-inner">
                 <Link className="sporty-header-brand" to="/" aria-label="Sporty 홈">
                     <span>Sporty</span>
@@ -78,7 +128,10 @@ export default function Header({ children, onFacilitySearch }) {
                 </Link>}
                 {/* [#54][USR-01][USR-02] 로그아웃·회원탈퇴는 마이페이지에서 처리한다. */}
                 <nav className="sporty-header-auth-menu" aria-label="회원 메뉴">
-                    {isLoggedIn ? <Link className="sporty-header-auth-primary" to="/mypage">마이페이지</Link> : <>
+                    {isLoggedIn ? <>
+                        {showAdmin && <Link className="sporty-header-auth-admin" to="/admin/dashboard">관리자 대시보드</Link>}
+                        <Link className="sporty-header-auth-primary" to="/mypage">마이페이지</Link>
+                    </> : <>
                         <Link className="sporty-header-auth-login" to="/login">로그인</Link>
                         <Link className="sporty-header-auth-primary" to="/signup">회원가입</Link>
                     </>}

@@ -25,6 +25,9 @@ api.interceptors.request.use(addServicePrefix);
 
 api.interceptors.request.use(config => {
   const accessToken = localStorage.getItem('at');
+  if (!config._authSession) config._authSession = {
+    rt: localStorage.getItem('rt'), userId: localStorage.getItem('userId'),
+  };
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
   return config;
 });
@@ -41,10 +44,12 @@ const expireSession = ({ skipSessionRedirect } = {}) => {
   }
 };
 
-// [USR-05] 401 응답 → RT로 AT 재발급 → 실패했던 요청을 한 번만 다시 보냄
+const refreshFlights = new Map();
+
+// 같은 세션의 동시 401은 한 번의 재발급을 공유한다.
 api.interceptors.response.use(
   response => response,
-  error => {
+  async error => {
     const originalRequest = error.config;
     if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
@@ -54,29 +59,42 @@ api.interceptors.response.use(
     const excludedUrls = ['/user-service/api/auth/login', '/user-service/api/auth/refresh', '/user-service/api/users'];
     if (excludedUrls.includes(originalRequest.url)) return Promise.reject(error);
 
-    const refreshToken = localStorage.getItem('rt');
+    const refreshToken = originalRequest._authSession?.rt;
+    const sameAccount = () => localStorage.getItem('rt') === refreshToken
+      && localStorage.getItem('userId') === originalRequest._authSession?.userId;
+    if (!sameAccount()) return Promise.reject(error);
     if (!refreshToken) {
       expireSession(originalRequest);
       return Promise.reject(error);
     }
     originalRequest._retry = true;
+    const sentToken = originalRequest.headers?.get?.('Authorization') ?? originalRequest.headers?.Authorization;
+    const currentToken = localStorage.getItem('at');
+    // 다른 요청이 이미 재발급을 끝낸 뒤 도착한 401도 새 토큰으로 한 번만 재시도한다.
+    if (currentToken && sentToken !== `Bearer ${currentToken}`) return api(originalRequest);
 
-    // 공통 api 대신 axios로 요청하여 재발급 요청이 인터셉터를 반복하지 않게 처리
-    return axios.post('/user-service/api/auth/refresh', { refreshToken }, { baseURL: endPoint })
-      .catch(refreshError => {
-        if (refreshError.response?.data?.code === 'INVALID_REFRESH_TOKEN'
-            && localStorage.getItem('rt') === refreshToken) {
-          expireSession(originalRequest);
-        }
-        return Promise.reject(refreshError);
-      })
-      .then(response => {
-        // 재발급을 기다리는 동안 로그아웃/계정 변경한 경우 중단
-        if (localStorage.getItem('rt') !== refreshToken) return Promise.reject(error);
-        localStorage.setItem('at', response.data.accessToken);
-        // 요청 인터셉터가 새 AT를 헤더에 붙임
-        return api(originalRequest);
-      });
+    const key = JSON.stringify([refreshToken, originalRequest._authSession.userId]);
+    let flight = refreshFlights.get(key);
+    if (!flight) {
+      flight = { redirectOnFailure: false };
+      // 공통 api 대신 axios로 요청해 재발급 요청의 인터셉터 재진입을 막는다.
+      flight.promise = axios.post('/user-service/api/auth/refresh', { refreshToken }, { baseURL: endPoint })
+        .then(response => {
+          if (!sameAccount()) throw error;
+          localStorage.setItem('at', response.data.accessToken);
+          return response.data.accessToken;
+        }).catch(refreshError => {
+          if (refreshError.response?.data?.code === 'INVALID_REFRESH_TOKEN' && sameAccount()) {
+            expireSession({ skipSessionRedirect: !flight.redirectOnFailure });
+          }
+          throw refreshError;
+        }).finally(() => refreshFlights.delete(key));
+      refreshFlights.set(key, flight);
+    }
+    if (!originalRequest.skipSessionRedirect) flight.redirectOnFailure = true;
+    await flight.promise;
+    if (!sameAccount()) return Promise.reject(error);
+    return api(originalRequest);
   }
 );
 

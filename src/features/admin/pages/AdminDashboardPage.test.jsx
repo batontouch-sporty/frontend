@@ -8,6 +8,8 @@ jest.mock('../api/adminApi', () => ({
   getCurrentUser: jest.fn(), getUserStats: jest.fn(), getMatchStats: jest.fn(),
   queryInstant: jest.fn(), queryRange: jest.fn(),
 }));
+// 기존 인증·통계·수동 조회 회귀 테스트는 신규 자동 조회와 독립적으로 검증한다.
+jest.mock('../components/MsaMonitoringDashboard', () => () => null);
 
 const userStats = { users: { active: 0, withdrawing: 0, withdrawn: 0 }, withdrawalSaga: { requested: 0, succeeded: 0, rejected: 0, timedOut: 0, inProgress: 0 } };
 const matchStats = { matches: { total: 0, byStatus: { RECRUITING: 0, CLOSED: 0, IN_PROGRESS: 0, COMPLETED: 0, CANCELLED: 0 } }, participants: { total: 0 } };
@@ -31,6 +33,11 @@ function show({ strict = false } = {}) {
     </Routes>
   </MemoryRouter>;
   return render(strict ? <StrictMode>{element}</StrictMode> : element);
+}
+
+async function openMonitoring() {
+  fireEvent.click(await screen.findByText('PromQL 고급 조회'));
+  return screen.findByRole('region', { name: '모니터링' });
 }
 
 beforeEach(() => {
@@ -113,7 +120,7 @@ test('PromQL을 제출해야만 조회하며 빈 vector와 실패를 구분한�
   getCurrentUser.mockResolvedValue(verified());
   queryInstant.mockResolvedValueOnce([]).mockRejectedValueOnce({ response: { status: 403 } });
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   expect(queryInstant).not.toHaveBeenCalled();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
@@ -130,7 +137,7 @@ test('A31 여러 시계열의 시각을 KST 날짜 경계로 표시하고 값 �
     { metric: { job: 'b' }, values: [[1704034800, '-Inf'], [1704034860, '1.2300']] },
   ]);
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: '  test_query  ' } });
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
@@ -152,7 +159,7 @@ test('A31의 빈 result와 values가 빈 시계열을 구분한다', async () =>
   getCurrentUser.mockResolvedValue(verified());
   queryRange.mockResolvedValueOnce([]).mockResolvedValueOnce([{ metric: {}, values: [] }]);
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
@@ -245,7 +252,7 @@ test('시계열은 유한한 값을 선으로 잇고 NaN·Inf 시점에서 끊�
     { metric: { job: 'c' }, values: [[100, '5']] },
   ]);
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
@@ -265,7 +272,7 @@ test('값이 있는 A30에서 A31로 전환하면 이전 vector를 matrix로 읽
   queryInstant.mockResolvedValue([{ metric: { job: 'a' }, value: [100, '3'] }]);
   queryRange.mockResolvedValue([{ metric: { job: 'a' }, values: [[100, '4']] }]);
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
   expect(await within(monitor).findByText('3')).toBeInTheDocument();
@@ -281,7 +288,7 @@ test('값이 있는 A31에서 A30으로 전환하면 이전 matrix를 vector로 
   queryRange.mockResolvedValue([{ metric: { job: 'a' }, values: [[100, '4']] }]);
   queryInstant.mockResolvedValue([{ metric: { job: 'a' }, value: [100, '3'] }]);
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: 'range' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
@@ -298,7 +305,7 @@ test.each(['success', 'error'])('전환 전 요청의 늦은 %s 응답은 현재
   queryInstant.mockReturnValue(pending.promise);
   queryRange.mockResolvedValue([{ metric: { job: 'new' }, values: [[100, '4']] }]);
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
   await waitFor(() => expect(queryInstant).toHaveBeenCalledTimes(1));
@@ -320,7 +327,7 @@ test('빠른 전환과 화면 이탈 뒤의 응답은 상태를 갱신하지 않
   queryInstant.mockReturnValue(first.promise);
   queryRange.mockReturnValue(second.promise);
   const view = show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
   await waitFor(() => expect(queryInstant).toHaveBeenCalledTimes(1));
@@ -359,7 +366,7 @@ test('ADMIN 표시 뒤 다른 탭 USER 전환은 즉시 숨기고 A2 재검증 �
   queryInstant.mockResolvedValue([{ metric: {}, value: [100, '99'] }]);
   show();
   expect(await screen.findByText('42')).toBeInTheDocument();
-  const monitor = screen.getByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));
   expect(await within(monitor).findByText('99')).toBeInTheDocument();
@@ -423,7 +430,7 @@ test.each([
   const pending = deferred();
   (mode === 'instant' ? queryInstant : queryRange).mockReturnValue(pending.promise);
   show();
-  const monitor = await screen.findByRole('region', { name: '모니터링' });
+  const monitor = await openMonitoring();
   fireEvent.change(within(monitor).getByLabelText('PromQL'), { target: { value: 'up' } });
   fireEvent.change(within(monitor).getByLabelText('조회 방식'), { target: { value: mode } });
   fireEvent.click(within(monitor).getByRole('button', { name: '조회' }));

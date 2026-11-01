@@ -48,6 +48,41 @@ test('401이면 새 AT로 원래 요청을 재시도한다', async () => {
   expect(localStorage.getItem('rt')).toBe('existing-rt');
 });
 
+test('헤더·통계·Prometheus 동시 401은 하나의 Refresh를 공유한다', async () => {
+  let releaseRefresh;
+  adapter.mockImplementation(config => {
+    if (config.url === REFRESH_URL) return new Promise(resolve => { releaseRefresh = () => resolve({ config, status: 200, data: { accessToken: 'new-at' }, headers: {} }); });
+    return config.headers.Authorization === 'Bearer new-at' ? success(config, 'ok') : failure(config, 401);
+  });
+  const requests = [
+    api.get('/api/users/me', { skipSessionRedirect: true }),
+    api.get('/user-service/api/admin/stats'),
+    api.get('/prometheus/api/v1/query'),
+  ];
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(adapter.mock.calls.filter(([config]) => config.url === REFRESH_URL)).toHaveLength(1);
+  releaseRefresh();
+  expect((await Promise.all(requests)).map(response => response.data)).toEqual(['ok', 'ok', 'ok']);
+  expect(adapter.mock.calls.filter(([config]) => config.url === REFRESH_URL)).toHaveLength(1);
+});
+
+test('공유 Refresh 중 계정 전환하면 이전 계정 토큰을 저장하거나 재시도하지 않는다', async () => {
+  let releaseRefresh;
+  adapter.mockImplementation(config => {
+    if (config.url === REFRESH_URL) return new Promise(resolve => { releaseRefresh = () => resolve({ config, status: 200, data: { accessToken: 'old-account-at' }, headers: {} }); });
+    return failure(config, 401);
+  });
+  const requests = [api.get('/api/users/me'), api.get('/prometheus/api/v1/query')];
+  await new Promise(resolve => setTimeout(resolve, 0));
+  localStorage.setItem('rt', 'new-account-rt');
+  localStorage.setItem('userId', 'new-user');
+  localStorage.setItem('at', 'new-account-at');
+  releaseRefresh();
+  expect((await Promise.allSettled(requests)).map(result => result.status)).toEqual(['rejected', 'rejected']);
+  expect(localStorage.getItem('at')).toBe('new-account-at');
+  expect(adapter.mock.calls.filter(([config]) => config.url === REFRESH_URL)).toHaveLength(1);
+});
+
 test.each([
   ['get', '/api/matches', '/match-service/api/matches'],
   ['post', '/api/auth/logout', '/user-service/api/auth/logout'],
