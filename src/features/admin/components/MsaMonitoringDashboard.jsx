@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { queryInstant, queryRange } from '../api/adminApi';
+import { classifyUp, finiteSample, StatusDonut, P95Bars, HttpStatusBars, ResourceGauges, StatusHeatmap } from './MonitoringVisualizations';
+import { PerformanceChart } from './MonitoringTimeSeries';
 
 const services = [
   ['user-service', '회원 · 인증'],
@@ -18,6 +20,7 @@ const tabs = [
 ];
 
 const ranges = { '15m': 900, '1h': 3600, '6h': 21600, '24h': 86400 };
+const steps = { '15m': 30, '1h': 60, '6h': 300, '24h': 900 };
 const rangeLabels = { '15m': '최근 15분', '1h': '최근 1시간', '6h': '최근 6시간', '24h': '최근 24시간' };
 const timeFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
@@ -31,64 +34,76 @@ const metricQueries = {
   rps: 'sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*"}[5m]))',
   p95: 'histogram_quantile(0.95, sum by (application, le) (rate(http_server_requests_seconds_bucket{job="sporty-services",uri!~"/actuator.*"}[5m])))',
   errors: '(sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*",status=~"5.."}[5m])) or on (application) (0 * sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*"}[5m])))) / sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*"}[5m]))',
+  statusCodes: 'sum by (application, status) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*",status=~"[2345].."}[5m]))',
   heap: 'sum by (application) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
+  heapUsed: 'sum by (application, instance) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
+  heapMax: 'jvm_memory_max_bytes{job="sporty-services",area="heap"}',
   cpu: 'max by (application) (process_cpu_usage{job="sporty-services"})',
   gc: 'sum by (application) (rate(jvm_gc_pause_seconds_count{job="sporty-services"}[5m]))',
   threads: 'sum by (application) (jvm_threads_live_threads{job="sporty-services"})',
 };
 
 // Prometheus 설정의 application 레이블로 비즈니스 서비스를 식별한다.
-const sampleNumber = raw => typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))
-  ? Number(raw) : null;
+const sampleNumber = finiteSample;
 
 export function statusFromUp(result, serviceId) {
   const samples = result.filter(item => serviceMetric(item) && item.metric.application === serviceId)
-    .map(item => sampleNumber(item.value?.[1])).filter(value => value === 0 || value === 1);
-  if (samples.length === 0) return 'missing';
-  if (samples.every(value => value === 0)) return 'down';
-  if (samples.some(value => value === 0)) return 'partial';
-  return samples.every(value => value === 1) ? 'up' : 'missing';
+    .map(item => sampleNumber(item.value?.[1]));
+  return classifyUp(samples);
 }
 
-function useUpMetrics(sessionSignal, range, revision) {
+function useUpMetrics(sessionSignal, range, revision, selected, tab) {
   const [instant, setInstant] = useState({ kind: 'loading' });
   const [history, setHistory] = useState({ kind: 'loading' });
+  const [performance, setPerformance] = useState({ rps: { kind: 'loading' }, p95: { kind: 'loading' } });
   const [updated, setUpdated] = useState(null);
   const [metrics, setMetrics] = useState({});
+  const [completed, setCompleted] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
     const abort = () => controller.abort();
+    const onVisibility = () => { if (document.visibilityState === 'hidden') abort(); };
     sessionSignal?.addEventListener('abort', abort);
+    document.addEventListener('visibilitychange', onVisibility);
     if (sessionSignal?.aborted) abort();
+    const startedAt = Date.now();
     setInstant({ kind: 'loading' });
-    setHistory({ kind: 'loading' });
-    setUpdated(null);
-    setMetrics(Object.fromEntries(Object.keys(metricQueries).map(key => [key, { kind: 'loading' }])));
-    const end = Math.floor(Date.now() / 1000);
-    const step = range === '24h' ? 300 : 60;
-    if (!controller.signal.aborted) {
-      queryInstant({ query: 'up', signal: controller.signal })
-        .then(data => {
-          if (!controller.signal.aborted) {
-            setInstant({ kind: 'success', data });
-            setUpdated(new Date());
-          }
-        })
-        .catch(() => { if (!controller.signal.aborted) setInstant({ kind: 'error' }); });
-      queryRange({ query: 'up', start: end - ranges[range], end, step, signal: controller.signal })
-        .then(data => { if (!controller.signal.aborted) setHistory({ kind: 'success', data }); })
-        .catch(() => { if (!controller.signal.aborted) setHistory({ kind: 'error' }); });
-      Object.entries(metricQueries).forEach(([key, query]) => {
-        queryInstant({ query, signal: controller.signal })
+    setHistory(tab === 'overview' ? { kind: 'loading' } : { kind: 'idle' });
+    setPerformance({ rps: { kind: tab === 'overview' ? 'loading' : 'idle' }, p95: { kind: tab === 'overview' ? 'loading' : 'idle' } });
+    setCompleted(null);
+    const instantQueries = Object.entries(metricQueries).filter(([key]) => tab === 'jvm' || !['gc', 'threads'].includes(key));
+    setMetrics(Object.fromEntries(instantQueries.map(([key]) => [key, { kind: 'loading' }])));
+    const end = Math.floor(startedAt / 1000);
+    const window = { start: end - ranges[range], end, step: steps[range] };
+    const pending = [];
+    if (!controller.signal.aborted && document.visibilityState === 'visible') {
+      pending.push(queryInstant({ query: 'up', signal: controller.signal })
+        .then(data => { if (!controller.signal.aborted) setInstant({ kind: 'success', data }); })
+        .catch(() => { if (!controller.signal.aborted) setInstant({ kind: 'error' }); }));
+      instantQueries.forEach(([key, query]) => {
+        pending.push(queryInstant({ query, signal: controller.signal })
           .then(data => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'success', data } })); })
-          .catch(() => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'error' } })); });
+          .catch(() => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'error' } })); }));
+      });
+      if (tab === 'overview') {
+        pending.push(queryRange({ query: 'up', ...window, signal: controller.signal })
+          .then(data => { if (!controller.signal.aborted) setHistory({ kind: 'success', data, window }); })
+          .catch(() => { if (!controller.signal.aborted) setHistory({ kind: 'error' }); }));
+        ['rps', 'p95'].forEach(key => {
+          pending.push(queryRange({ query: metricQueries[key], ...window, signal: controller.signal })
+            .then(data => { if (!controller.signal.aborted) setPerformance(current => ({ ...current, [key]: { kind: 'success', data, window } })); })
+            .catch(() => { if (!controller.signal.aborted) setPerformance(current => ({ ...current, [key]: { kind: 'error' } })); }));
+        });
+      }
+      Promise.allSettled(pending).then(() => {
+        if (!controller.signal.aborted) { setUpdated(new Date()); setCompleted({ startedAt }); }
       });
     }
-    return () => { sessionSignal?.removeEventListener('abort', abort); controller.abort(); };
-  }, [sessionSignal, range, revision]);
+    return () => { sessionSignal?.removeEventListener('abort', abort); document.removeEventListener('visibilitychange', onVisibility); controller.abort(); };
+  }, [sessionSignal, range, revision, selected, tab]);
 
-  return { instant, history, metrics, updated };
+  return { instant, history, performance, metrics, updated, completed };
 }
 
 function metricValue(request, serviceId) {
@@ -141,63 +156,6 @@ function Kpi({ label, value, unit, foot, icon, tone = '' }) {
   </article>;
 }
 
-function EmptyMetric({ title, description, kind = 'missing' }) {
-  return <div className="state-box" role={kind === 'error' ? 'alert' : undefined}>
-    <div><span className="state-illustration" aria-hidden="true">{kind === 'error' ? '!' : kind === 'loading' ? '◌' : '∅'}</span>
-      <h3>{title}</h3><p>{description}</p></div>
-  </div>;
-}
-
-function UpChart({ data, selected }) {
-  const series = serviceSeries(data, selected);
-  if (series.length === 0) return <EmptyMetric title="서비스 시계열 미수집" description="선택한 서비스의 up 시계열이 없습니다. 타깃 부재를 DOWN이나 0으로 표시하지 않습니다." />;
-  const colors = ['#141a22', '#15803d', '#9a5b00', '#5b6675', '#596aa6'];
-  const allTimes = series.flatMap(item => item.values
-    .filter(([time, value]) => Number.isFinite(time) && Number.isFinite(Number(value)))
-    .map(([time]) => time));
-  if (!allTimes.length) return <EmptyMetric title="데이터 없음" description="수집된 서비스 시계열에 표시 가능한 값이 없습니다." />;
-  const first = Math.min(...allTimes);
-  const last = Math.max(...allTimes);
-  const paths = series.map((item, index) => {
-    const finite = item.values.filter(([time, value]) => Number.isFinite(time) && Number.isFinite(Number(value)));
-    if (finite.length === 0) return null;
-    let connected = false;
-    const path = item.values.map(([time, raw]) => {
-      const value = Number(raw);
-      if (!Number.isFinite(time) || !Number.isFinite(value)) { connected = false; return ''; }
-      const x = last === first ? 300 : 6 + (time - first) / (last - first) * 588;
-      const y = 170 - Math.max(0, Math.min(1, value)) * 135;
-      const point = `${x.toFixed(1)} ${y.toFixed(1)}`;
-      const command = `${connected ? 'L' : 'M'}${point}`;
-      connected = true;
-      return command;
-    }).filter(Boolean).join(' ');
-    return { key: `${item.metric.application}-${index}`, name: item.metric.application, color: colors[index % colors.length], path };
-  }).filter(Boolean);
-  if (paths.length === 0) return <EmptyMetric title="데이터 없음" description="수집된 서비스 시계열에 표시 가능한 값이 없습니다." />;
-  return <>
-    <svg className="chart" viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="서비스별 UP 상태 추이, 1은 UP, 0은 DOWN">
-      {[35, 102, 170].map(y => <line className="chart-grid" key={y} x1="0" x2="600" y1={y} y2={y} />)}
-      {paths.map(item => <path key={item.key} d={item.path} fill="none" stroke={item.color} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
-    </svg>
-    <div className="chart-labels"><span>{timeFormatter.format(new Date(first * 1000))}</span><span>1 UP · 0 DOWN</span><span>{timeFormatter.format(new Date(last * 1000))}</span></div>
-    <ul className="msa-chart-legend">{paths.map(item => <li key={item.key}><span style={{ background: item.color }} />{item.name}</li>)}</ul>
-  </>;
-}
-
-function Overview({ instant, history, selected }) {
-  if (instant.kind === 'loading' || history.kind === 'loading') return <EmptyMetric kind="loading" title="지표를 불러오는 중" description="서비스 상태와 시계열을 조회하고 있습니다." />;
-  if (instant.kind === 'error' || history.kind === 'error') return <EmptyMetric kind="error" title="지표를 조회하지 못했습니다" description="Gateway 또는 Prometheus 연결을 확인한 뒤 새로고침하세요." />;
-  const tracked = services.filter(([id]) => selected === 'all' || selected === id)
-    .map(([id]) => statusFromUp(instant.data, id));
-  return <div className="content-grid">
-    <article className="panel chart-card"><div className="chart-header"><div><h3 className="panel-title">서비스 상태 추이</h3><p className="panel-sub">{selected === 'all' ? '전체 서비스' : selected} · 실제 up 시계열</p></div><span className="chart-key">UP / DOWN</span></div><UpChart data={history.data} selected={selected} /></article>
-    <article className="panel"><div className="panel-head"><div><h3 className="panel-title">운영 신호</h3><p className="panel-sub">수집 여부와 실제 DOWN을 분리합니다.</p></div><span className="tiny-tag">A30</span></div>
-      <dl className="metric-list"><div><dt>UP</dt><dd>{tracked.filter(s => s === 'up').length}<small>수집된 타깃</small></dd></div><div><dt>DOWN / 일부 DOWN</dt><dd>{tracked.filter(s => s === 'down' || s === 'partial').length}<small>up=0 확인</small></dd></div><div><dt>미수집</dt><dd>{tracked.filter(s => s === 'missing').length}<small>DOWN으로 추정하지 않음</small></dd></div></dl>
-    </article>
-  </div>;
-}
-
 const unavailableAreas = {
   feign: ['OpenFeign 호출 시간', 'Circuit Breaker 상태', '호출 관계', 'Feign·Circuit Breaker의 메트릭 이름과 레이블이 아직 실측으로 확인되지 않았습니다.'],
   kafka: ['Consumer Group Lag', '이벤트 처리량', 'DLT 발행', 'Consumer 중단 중 Lag를 관측할 Exporter와 이벤트 계측이 아직 확인되지 않았습니다.'],
@@ -218,7 +176,7 @@ function UnlinkedArea({ tab }) {
 function DetailData({ tab, history, selected }) {
   if (tab === 'jvm') return <p>JVM 지표는 A30 현재 값입니다. 시계열은 연결 후 이곳에 표시합니다.</p>;
   if (tab !== 'overview') return <p>이 영역의 계측이 확인되지 않아 상세 데이터가 없습니다.</p>;
-  if (history.kind === 'loading') return <p role="status">시계열을 조회하는 중입니다.</p>;
+  if (history.kind === 'loading' || history.kind === 'idle') return <p role="status">시계열을 조회하는 중입니다.</p>;
   if (history.kind === 'error') return <p role="alert">시계열 조회에 실패했습니다.</p>;
   const series = serviceSeries(history.data, selected);
   if (!series.length) return <p>수집된 서비스 시계열이 없습니다.</p>;
@@ -240,20 +198,37 @@ function JvmArea({ metrics, selected }) {
 }
 
 export default function MsaMonitoringDashboard({ sessionSignal }) {
-  const [range, setRange] = useState('1h');
+  const [range, setRange] = useState('15m');
   const [selected, setSelected] = useState('all');
   const [tab, setTab] = useState('overview');
   const [revision, setRevision] = useState(0);
-  const { instant, history, metrics, updated } = useUpMetrics(sessionSignal, range, revision);
+  const [auto, setAuto] = useState(true);
+  const { instant, history, performance, metrics, updated, completed } = useUpMetrics(sessionSignal, range, revision, selected, tab);
+  useEffect(() => {
+    if (!auto || !completed || document.visibilityState !== 'visible' || sessionSignal?.aborted) return undefined;
+    const timer = window.setTimeout(() => setRevision(value => value + 1), Math.max(0, 30000 - (Date.now() - completed.startedAt)));
+    const cancel = () => window.clearTimeout(timer);
+    const onVisibility = () => { if (document.visibilityState === 'hidden') cancel(); };
+    sessionSignal?.addEventListener('abort', cancel);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { cancel(); sessionSignal?.removeEventListener('abort', cancel); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [auto, completed, sessionSignal]);
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible' && auto && !sessionSignal?.aborted) setRevision(value => value + 1); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [auto, sessionSignal]);
   const shown = services.filter(([id]) => selected === 'all' || selected === id);
   const statuses = shown.map(([id]) => instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind);
   const activeServices = shown.filter((_, index) => ['up', 'partial'].includes(statuses[index])).map(([id]) => id);
-  const upCount = statuses.filter(status => status === 'up').length;
-  const missingCount = statuses.filter(status => status === 'missing').length;
-  const downCount = statuses.filter(status => status === 'down' || status === 'partial').length;
+  const allStatuses = Object.fromEntries(services.map(([id]) => [id, instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind]));
+  const allStates = Object.values(allStatuses);
+  const upCount = allStates.filter(status => status === 'up').length;
+  const missingCount = allStates.filter(status => status === 'missing').length;
+  const downCount = allStates.filter(status => status === 'down' || status === 'partial').length;
   const observedCount = upCount + downCount;
   const summary = instant.kind === 'loading' ? '조회 중' : instant.kind === 'error' ? '조회 실패'
-    : observedCount === 0 ? '미수집' : `${upCount} / ${observedCount}`;
+    : `${upCount} / ${services.length}`;
   const displayHttp = (key, id) => displayedMetric(metrics[key], id, key, metrics.rps,
     instant.kind === 'success' ? (id === 'all' ? (observedCount ? undefined : 'missing') : statusFromUp(instant.data, id)) : instant.kind,
     activeServices);
@@ -278,18 +253,25 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
       <div className="msa-hero-main"><div><p className="eyebrow">Sporty MSA Control Center</p><h1>관리자 대시보드</h1><p className="hero-copy">서비스의 상태와 운영 흐름을 한눈에 확인하세요.</p></div>
         <div><div className="hero-controls"><div className="field"><label htmlFor="msa-range">조회 시간</label><select id="msa-range" value={range} onChange={event => setRange(event.target.value)}>{Object.entries(rangeLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div>
           <div className="field"><label htmlFor="msa-service">서비스</label><select id="msa-service" value={selected} onChange={event => setSelected(event.target.value)}><option value="all">전체 서비스</option>{services.map(([id]) => <option key={id} value={id}>{id}</option>)}</select></div>
-          <button type="button" className="btn btn-lime" onClick={() => setRevision(value => value + 1)}><span aria-hidden="true">↻</span> 새로고침</button></div>
-          <div className="updated" aria-live="polite">마지막 조회 · {updated ? timeFormatter.format(updated) : '—'}</div></div>
+          <button type="button" className="btn btn-lime" onClick={() => setRevision(value => value + 1)}><span aria-hidden="true">↻</span> 새로고침</button>
+          <button type="button" className="btn msa-auto-toggle" aria-pressed={auto} onClick={() => setAuto(value => !value)}>자동 갱신 {auto ? 'ON' : 'OFF'}</button></div>
+          <div className="updated" aria-live="polite">30초 주기 조회 · 마지막 완료 {updated ? timeFormatter.format(updated) : '—'} KST</div></div>
       </div>
     </div></div>
     <div className="admin-dashboard-inner msa-content">
       <section className="kpi-grid" aria-label="운영 요약">
-        <Kpi label="정상 서비스" value={summary} icon="✓" foot={instant.kind === 'success' ? `수집 ${observedCount} · DOWN ${downCount} · 미수집 ${missingCount}` : '서비스 상태 조회'} tone={downCount ? 'is-danger' : missingCount ? 'is-warn' : ''} />
-        <Kpi label="전체 요청량" value={displayHttp('rps', selected)} icon="↗" foot="수집된 서비스의 5분 평균 합계" />
-        <Kpi label="P95 응답시간" value={displayHttp('p95', selected)} icon="◷" foot="서비스별 P95 중 최대 · ms" />
-        <Kpi label="HTTP 5xx" value={displayHttp('errors', selected)} icon="!" foot="서비스별 5xx 오류율 중 최대" />
+        <Kpi label="수집 정상 서비스" value={summary} icon="✓" foot={instant.kind === 'success' ? `전체 5 · 수집 실패 ${allStates.filter(status => status === 'down').length} · 일부 실패 ${allStates.filter(status => status === 'partial').length} · 미수집 ${missingCount}` : '서비스 상태 조회'} tone={downCount ? 'is-danger' : missingCount ? 'is-warn' : ''} />
+        <Kpi label="전체 요청량" value={displayHttp('rps', selected)} icon="↗" foot="최근 5분 평균 · 선택 서비스 합계" />
+        <Kpi label="서비스별 최대 P95" value={displayHttp('p95', selected)} icon="◷" foot="최근 5분 · 서비스별 P95 최댓값 · ms" />
+        <Kpi label="서비스별 최대 5xx율" value={displayHttp('errors', selected)} icon="!" foot="최근 5분 · 서비스별 5xx 비율 최댓값" />
         <Kpi label="Kafka Lag" value={unlinked} icon="▤" foot="Consumer Lag Exporter 확인 필요" tone="is-muted" />
       </section>
+      <section className="section" aria-label="핵심 지표 그래프"><div className="msa-viz-grid">
+        <StatusDonut services={services} statuses={services.map(([id]) => allStatuses[id])} instantKind={instant.kind} />
+        <P95Bars services={services} selected={selected} statuses={allStatuses} p95={metrics.p95} rps={metrics.rps} />
+        <HttpStatusBars services={services} selected={selected} statuses={allStatuses} distribution={metrics.statusCodes} rps={metrics.rps} />
+        <ResourceGauges services={services} selected={selected} statuses={allStatuses} cpu={metrics.cpu} heap={metrics.heap} heapUsed={metrics.heapUsed} heapMax={metrics.heapMax} />
+      </div></section>
       <section className="section" aria-labelledby="msa-services-title"><div className="section-heading"><div><p className="section-kicker">01 / LIVE OVERVIEW</p><h2 id="msa-services-title">서비스별 상태</h2><p className="section-desc">UP·DOWN·미수집을 분리하고, 선택한 서비스를 강조합니다.</p></div><span className="section-aside">5개 비즈니스 서비스</span></div>
         <div className="panel"><div className="panel-head"><div><h3 className="panel-title">서비스 운영 현황</h3><p className="panel-sub">상태는 Prometheus up, 성능은 HTTP 계측으로 확인합니다.</p></div><span className="tiny-tag">A30</span></div>
           <div className="service-table-wrap"><table className="service-table"><thead><tr><th scope="col">서비스</th><th scope="col">상태</th><th scope="col">요청량</th><th scope="col">P95</th><th scope="col">5xx 오류율</th></tr></thead><tbody>{services.map(([id, type]) => <tr key={id} className={selected === id ? 'selected-row' : ''}><td><span className="service-name">{id}</span><span className="service-type">{type}</span></td><td><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></td><td>{displayHttp('rps', id)}</td><td>{displayHttp('p95', id)}</td><td>{displayHttp('errors', id)}</td></tr>)}</tbody></table></div>
@@ -298,7 +280,13 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
       </section>
       <section className="section" aria-labelledby="msa-metrics-title"><div className="section-heading"><div><p className="section-kicker">02 / METRICS</p><h2 id="msa-metrics-title">상세 모니터링</h2><p className="section-desc">운영 흐름별로 필요한 지표를 살펴봅니다.</p></div><span className="section-aside">{rangeLabels[range]}</span></div>
         <div className="tabs" role="tablist" aria-label="모니터링 영역" onKeyDown={tabKeyDown}>{tabs.map(([id, label]) => <button className="tab" role="tab" type="button" id={`msa-tab-${id}`} key={id} aria-controls="msa-tab-content" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onClick={() => selectTab(id)}>{label}</button>)}</div>
-        <div id="msa-tab-content" role="tabpanel" aria-labelledby={`msa-tab-${tab}`} tabIndex={0}>{tab === 'overview' ? <Overview instant={instant} history={history} selected={selected} /> : tab === 'jvm' ? <JvmArea metrics={metrics} selected={selected} /> : <UnlinkedArea tab={tab} />}</div>
+        <div id="msa-tab-content" role="tabpanel" aria-labelledby={`msa-tab-${tab}`} tabIndex={0}>{tab === 'overview' ? <>
+          <div className="msa-time-grid">
+            <PerformanceChart metric="rps" request={performance.rps} rpsRequest={performance.rps} services={services} selected={selected} />
+            <PerformanceChart metric="p95" request={performance.p95} rpsRequest={performance.rps} services={services} selected={selected} />
+          </div>
+          <StatusHeatmap services={services} history={history} window={history.window} />
+        </> : tab === 'jvm' ? <JvmArea metrics={metrics} selected={selected} /> : <UnlinkedArea tab={tab} />}</div>
         <details className="details"><summary>상세 데이터 보기 <span className="tiny-tag">A31</span></summary><div className="details-body"><p>선택한 영역의 실제 시계열 응답입니다.</p><DetailData tab={tab} history={history} selected={selected} /></div></details>
       </section>
     </div>
