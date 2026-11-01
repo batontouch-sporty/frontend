@@ -100,15 +100,22 @@ function metricValue(request, serviceId) {
   return values.length ? values : null;
 }
 
-function displayedMetric(request, serviceId, key, rpsRequest, upState) {
+function displayedMetric(request, serviceId, key, rpsRequest, upState, activeServices = []) {
   if (!request) return '조회 중';
   if (request?.kind === 'loading') return '조회 중';
   if (request?.kind === 'error') return '조회 실패';
   if (upState === 'down') return '서비스 DOWN';
   if (upState === 'missing') return '미수집';
   const http = ['rps', 'p95', 'errors'].includes(key);
-  const rps = http && key !== 'rps' ? metricValue(rpsRequest, serviceId) : null;
-  if (rps && rps.every(value => value === 0)) return '요청 없음';
+  if (http && key !== 'rps') {
+    const noRequests = serviceId === 'all'
+      ? activeServices.length > 0 && activeServices.every(id => {
+        const samples = metricValue(rpsRequest, id);
+        return samples && samples.every(value => value === 0);
+      })
+      : metricValue(rpsRequest, serviceId)?.every(value => value === 0);
+    if (noRequests) return '요청 없음';
+  }
   const values = metricValue(request, serviceId);
   if (!values) return http ? '데이터 없음' : '미수집';
   const value = key === 'rps' || key === 'heap' || key === 'gc' || key === 'threads'
@@ -240,6 +247,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
   const { instant, history, metrics, updated } = useUpMetrics(sessionSignal, range, revision);
   const shown = services.filter(([id]) => selected === 'all' || selected === id);
   const statuses = shown.map(([id]) => instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind);
+  const activeServices = shown.filter((_, index) => ['up', 'partial'].includes(statuses[index])).map(([id]) => id);
   const upCount = statuses.filter(status => status === 'up').length;
   const missingCount = statuses.filter(status => status === 'missing').length;
   const downCount = statuses.filter(status => status === 'down' || status === 'partial').length;
@@ -247,7 +255,8 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
   const summary = instant.kind === 'loading' ? '조회 중' : instant.kind === 'error' ? '조회 실패'
     : observedCount === 0 ? '미수집' : `${upCount} / ${observedCount}`;
   const displayHttp = (key, id) => displayedMetric(metrics[key], id, key, metrics.rps,
-    instant.kind === 'success' ? (id === 'all' ? (observedCount ? undefined : 'missing') : statusFromUp(instant.data, id)) : instant.kind);
+    instant.kind === 'success' ? (id === 'all' ? (observedCount ? undefined : 'missing') : statusFromUp(instant.data, id)) : instant.kind,
+    activeServices);
 
   const selectTab = (next, focus = false) => {
     setTab(next);

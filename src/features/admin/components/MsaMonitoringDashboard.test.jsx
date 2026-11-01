@@ -108,6 +108,42 @@ test('요청량 0은 실제 0으로, 같은 구간의 P95·5xx는 요청 없음�
   expect(screen.queryByText(/NaN%|NaN ms|Infinity ms/)).not.toBeInTheDocument();
 });
 
+test('전체 서비스에서 일부 활성 서비스 RPS가 없으면 유효한 P95·5xx를 표시한다', async () => {
+  queryInstant.mockImplementation(({ query }) => {
+    if (query === 'up') return Promise.resolve([
+      up('user-service', 1), up('match-service', 0), up('match-service', 1), up('facility-service', 0),
+    ]);
+    if (query.includes('histogram_quantile')) return Promise.resolve([aggregate('match-service', 0.2)]);
+    if (query.includes('status=~')) return Promise.resolve([aggregate('match-service', 0.05)]);
+    if (query.includes('http_server_requests_seconds_count')) return Promise.resolve([aggregate('user-service', 0)]);
+    return Promise.resolve([]);
+  });
+  render(<MsaMonitoringDashboard />);
+  const summary = screen.getByRole('region', { name: '운영 요약' });
+  await waitFor(() => expect(within(summary).getByText('200 ms')).toBeInTheDocument());
+  expect(within(summary).getByText('5.0%')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('서비스'), { target: { value: 'user-service' } });
+  expect(within(summary).getAllByText('요청 없음')).toHaveLength(2);
+  fireEvent.change(screen.getByLabelText('서비스'), { target: { value: 'match-service' } });
+  expect(within(summary).getByText('200 ms')).toBeInTheDocument();
+  expect(within(summary).getByText('5.0%')).toBeInTheDocument();
+});
+
+test('전체 활성 서비스에 유효한 RPS 0 샘플이 모두 있으면 요청 없음이다', async () => {
+  queryInstant.mockImplementation(({ query }) => {
+    if (query === 'up') return Promise.resolve([up('user-service', 1), up('match-service', 1), up('facility-service', 0)]);
+    if (query.includes('histogram_quantile') || query.includes('status=~')) return Promise.resolve([]);
+    if (query.includes('http_server_requests_seconds_count')) return Promise.resolve([
+      aggregate('user-service', 0), aggregate('match-service', 0),
+    ]);
+    return Promise.resolve([]);
+  });
+  render(<MsaMonitoringDashboard />);
+  const summary = screen.getByRole('region', { name: '운영 요약' });
+  await waitFor(() => expect(within(summary).getAllByText('요청 없음')).toHaveLength(2));
+  expect(within(summary).getByText('0.00 RPS')).toBeInTheDocument();
+});
+
 test('비즈니스 시계열 부재와 비유한 값은 0으로 추정하지 않는다', async () => {
   queryInstant.mockImplementation(({ query }) => {
     if (query === 'up') return Promise.resolve([up('user-service', 1), up('match-service', 0)]);
