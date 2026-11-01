@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MsaMonitoringDashboard, { statusFromUp } from './MsaMonitoringDashboard';
-import { buildHeatmap } from './MonitoringVisualizations';
+import { buildHeatmap, ResourceGauges } from './MonitoringVisualizations';
 import { buildPerformanceSeries } from './MonitoringTimeSeries';
 import { queryInstant, queryRange } from '../api/adminApi';
 
@@ -282,11 +282,11 @@ test('HTTP 상태 코드 합계와 전체 RPS를 비교하고 미분류 응답�
   expect(chart.querySelector('.msa-http-unclassified')).toBeInTheDocument();
 });
 
-test('Heap 비율은 동일 인스턴스의 사용량·최대치를 비교하고 최대치 부재를 계산 불가로 표시한다', async () => {
+test('Heap 비율은 동일 인스턴스의 Used/Committed를 비교하고 서비스는 최대 비율을 표시한다', async () => {
   const instance = (id, name, value) => ({ metric: { application: id, instance: name }, value: [100, String(value)] });
   queryInstant.mockImplementation(({ query }) => {
     if (query === 'up') return Promise.resolve([up('user-service', 1), up('match-service', 1)]);
-    if (query.includes('jvm_memory_max_bytes')) return Promise.resolve([instance('user-service', 'a', 120 * 1048576), instance('user-service', 'b', 80 * 1048576)]);
+    if (query.includes('jvm_memory_committed_bytes')) return Promise.resolve([instance('user-service', 'a', 120 * 1048576), instance('user-service', 'b', 80 * 1048576)]);
     if (query.includes('jvm_memory_used_bytes') && query.includes('instance')) return Promise.resolve([
       instance('user-service', 'a', 60 * 1048576), instance('user-service', 'b', 40 * 1048576), instance('match-service', 'c', 20 * 1048576),
     ]);
@@ -296,9 +296,10 @@ test('Heap 비율은 동일 인스턴스의 사용량·최대치를 비교하고
   });
   render(<MsaMonitoringDashboard />);
   const chart = screen.getByRole('article', { name: '서비스별 CPU와 Heap 사용량' });
-  await waitFor(() => expect(within(chart).getByText('100.0 MiB · 50.0%')).toBeInTheDocument());
+  await waitFor(() => expect(within(chart).getByText('100.0 MiB · 50.0% · Committed 대비')).toBeInTheDocument());
   expect(within(chart).getByText('20.0 MiB · 계산 불가')).toBeInTheDocument();
   expect(within(chart).getByText('12.0%')).toBeInTheDocument();
+  expect(queryInstant.mock.calls.some(([request]) => request.query.includes('jvm_memory_max_bytes'))).toBe(false);
 });
 
 test('히트맵은 공통 구간에서 복수 인스턴스를 합치고 누락을 DOWN으로 채우지 않는다', () => {
@@ -331,10 +332,10 @@ test('히트맵은 A31의 네 조회 범위와 KST 셀 상태를 표시한다', 
   } finally { now.mockRestore(); }
 });
 
-test('HTTP 상태 코드 조회 실패와 Heap 최대치 조회 실패를 실제 0으로 표시하지 않는다', async () => {
+test('HTTP 상태 코드 조회 실패와 Heap Committed 조회 실패를 실제 0으로 표시하지 않는다', async () => {
   queryInstant.mockImplementation(({ query }) => {
     if (query === 'up') return Promise.resolve([up('user-service', 1)]);
-    if (query.includes('by (application, status)') || query.includes('jvm_memory_max_bytes')) return Promise.reject(new Error('offline'));
+    if (query.includes('by (application, status)') || query.includes('jvm_memory_committed_bytes')) return Promise.reject(new Error('offline'));
     if (query.includes('jvm_memory_used_bytes')) return Promise.resolve([aggregate('user-service', 104857600)]);
     if (query.includes('http_server_requests_seconds_count') && !query.includes('status=~')) return Promise.resolve([aggregate('user-service', 2)]);
     return Promise.resolve([]);
@@ -347,12 +348,20 @@ test('HTTP 상태 코드 조회 실패와 Heap 최대치 조회 실패를 실제
   expect(http.querySelector('.msa-http-track')).not.toBeInTheDocument();
 });
 
-test('Heap 풀 하나의 최대치가 유효하지 않으면 다른 풀의 최대치로 사용률을 만들지 않는다', async () => {
+test.each([
+  ['모든 Max 유효', [200, 100, 50]],
+  ['G1 Eden Max=-1', [-1, 200, 50]],
+  ['G1 Survivor Max=-1', [200, 100, -1]],
+  ['일부 Max만 유효', [-1, 200, -1]],
+])('%s: Pool Max를 전체 Heap으로 가정하지 않고 Committed 대비 표시한다', async (_, maxValues) => {
   queryInstant.mockImplementation(({ query }) => {
     if (query === 'up') return Promise.resolve([up('user-service', 1)]);
-    if (query.includes('jvm_memory_max_bytes')) return Promise.resolve([
-      { metric: { application: 'user-service', instance: 'a', id: 'eden' }, value: [100, String(200 * 1048576)] },
-      { metric: { application: 'user-service', instance: 'a', id: 'old' }, value: [100, '-1'] },
+    if (query.includes('jvm_memory_max_bytes')) return Promise.resolve(maxValues.map((value, index) => ({
+      metric: { application: 'user-service', instance: 'a', id: ['eden', 'old', 'survivor'][index] },
+      value: [100, String(value === -1 ? -1 : value * 1048576)],
+    })));
+    if (query.includes('jvm_memory_committed_bytes')) return Promise.resolve([
+      { metric: { application: 'user-service', instance: 'a' }, value: [100, String(200 * 1048576)] },
     ]);
     if (query.includes('jvm_memory_used_bytes') && query.includes('instance')) return Promise.resolve([
       { metric: { application: 'user-service', instance: 'a' }, value: [100, String(100 * 1048576)] },
@@ -362,7 +371,40 @@ test('Heap 풀 하나의 최대치가 유효하지 않으면 다른 풀의 최�
   });
   render(<MsaMonitoringDashboard />);
   const chart = screen.getByRole('article', { name: '서비스별 CPU와 Heap 사용량' });
-  await waitFor(() => expect(within(chart).getByText('100.0 MiB · 계산 불가')).toBeInTheDocument());
+  await waitFor(() => expect(within(chart).getByText('100.0 MiB · 50.0% · Committed 대비')).toBeInTheDocument());
+  expect(queryInstant.mock.calls.some(([request]) => request.query.includes('jvm_memory_max_bytes'))).toBe(false);
+});
+
+const heapSample = (instance, value) => ({ metric: { application: 'user-service', instance }, value: [100, String(value)] });
+const heapRequest = data => ({ kind: 'success', data });
+const mib = 1048576;
+
+test.each([
+  ['Committed 정상', [heapSample('a', 50 * mib)], [heapSample('a', 100 * mib)], '50.0% · Committed 대비'],
+  ['Committed 없음', [heapSample('a', 50 * mib)], [], '계산 불가'],
+  ['Committed 0', [heapSample('a', 50 * mib)], [heapSample('a', 0)], '계산 불가'],
+  ['Committed NaN', [heapSample('a', 50 * mib)], [heapSample('a', 'NaN')], '계산 불가'],
+  ['Committed Inf', [heapSample('a', 50 * mib)], [heapSample('a', 'Inf')], '계산 불가'],
+  ['Used 미수집', [], [heapSample('a', 100 * mib)], '계산 불가'],
+  ['Used NaN', [heapSample('a', 'NaN')], [heapSample('a', 100 * mib)], '계산 불가'],
+  ['Used > Committed', [heapSample('a', 110 * mib)], [heapSample('a', 100 * mib)], '계산 불가'],
+  ['인스턴스 불일치', [heapSample('a', 50 * mib)], [heapSample('b', 100 * mib)], '계산 불가'],
+  ['복수 인스턴스 최대 비율', [heapSample('a', 50 * mib), heapSample('b', 70 * mib)], [heapSample('a', 100 * mib), heapSample('b', 100 * mib)], '70.0% · Committed 대비'],
+  ['복수 인스턴스 일부 누락', [heapSample('a', 50 * mib), heapSample('b', 70 * mib)], [heapSample('a', 100 * mib)], '계산 불가'],
+])('%s: Heap MiB를 유지하고 신뢰 가능한 비율만 표시한다', (_, used, committed, expected) => {
+  render(<ResourceGauges services={[["user-service"]]} selected="all" statuses={{ 'user-service': 'up' }}
+    cpu={heapRequest([])} heap={heapRequest([aggregate('user-service', 100 * mib)])}
+    heapUsed={heapRequest(used)} heapCommitted={heapRequest(committed)} />);
+  expect(screen.getByText(`100.0 MiB · ${expected}`)).toBeInTheDocument();
+});
+
+test('Committed 조회 오류와 서비스 미수집은 Heap 사용량을 0으로 조작하지 않는다', () => {
+  const props = { services: [['user-service']], selected: 'all', cpu: heapRequest([]),
+    heap: heapRequest([aggregate('user-service', 100 * mib)]), heapUsed: heapRequest([heapSample('a', 50 * mib)]) };
+  const view = render(<ResourceGauges {...props} statuses={{ 'user-service': 'up' }} heapCommitted={{ kind: 'error' }} />);
+  expect(screen.getByText('100.0 MiB · 조회 실패')).toBeInTheDocument();
+  view.rerender(<ResourceGauges {...props} statuses={{ 'user-service': 'missing' }} heapCommitted={heapRequest([heapSample('a', 100 * mib)])} />);
+  expect(screen.getAllByText('미수집').length).toBeGreaterThan(0);
 });
 
 const settle = async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); };

@@ -37,7 +37,7 @@ const metricQueries = {
   statusCodes: 'sum by (application, status) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*",status=~"[2345].."}[5m]))',
   heap: 'sum by (application) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
   heapUsed: 'sum by (application, instance) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
-  heapMax: 'jvm_memory_max_bytes{job="sporty-services",area="heap"}',
+  heapCommitted: 'sum by (application, instance) (jvm_memory_committed_bytes{job="sporty-services",area="heap"})',
   cpu: 'max by (application) (process_cpu_usage{job="sporty-services"})',
   gc: 'sum by (application) (rate(jvm_gc_pause_seconds_count{job="sporty-services"}[5m]))',
   threads: 'sum by (application) (jvm_threads_live_threads{job="sporty-services"})',
@@ -270,7 +270,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
         <StatusDonut services={services} statuses={services.map(([id]) => allStatuses[id])} instantKind={instant.kind} />
         <P95Bars services={services} selected={selected} statuses={allStatuses} p95={metrics.p95} rps={metrics.rps} />
         <HttpStatusBars services={services} selected={selected} statuses={allStatuses} distribution={metrics.statusCodes} rps={metrics.rps} />
-        <ResourceGauges services={services} selected={selected} statuses={allStatuses} cpu={metrics.cpu} heap={metrics.heap} heapUsed={metrics.heapUsed} heapMax={metrics.heapMax} />
+        <ResourceGauges services={services} selected={selected} statuses={allStatuses} cpu={metrics.cpu} heap={metrics.heap} heapUsed={metrics.heapUsed} heapCommitted={metrics.heapCommitted} />
       </div></section>
       <section className="section" aria-labelledby="msa-services-title"><div className="section-heading"><div><p className="section-kicker">01 / LIVE OVERVIEW</p><h2 id="msa-services-title">서비스별 상태</h2><p className="section-desc">UP·DOWN·미수집을 분리하고, 선택한 서비스를 강조합니다.</p></div><span className="section-aside">5개 비즈니스 서비스</span></div>
         <div className="panel"><div className="panel-head"><div><h3 className="panel-title">서비스 운영 현황</h3><p className="panel-sub">상태는 Prometheus up, 성능은 HTTP 계측으로 확인합니다.</p></div><span className="tiny-tag">A30</span></div>

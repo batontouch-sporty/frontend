@@ -113,39 +113,37 @@ export function HttpStatusBars({ services, selected, statuses, distribution, rps
   </article>;
 }
 
-export function ResourceGauges({ services, selected, statuses, cpu, heap, heapUsed, heapMax }) {
+export function ResourceGauges({ services, selected, statuses, cpu, heap, heapUsed, heapCommitted }) {
   const rows = services.filter(([id]) => selected === 'all' || selected === id).map(([id]) => {
     const rawCpu = finiteSample(serviceSample(cpu, id)?.value?.[1]);
     const cpuValue = rawCpu !== null && rawCpu >= 0 ? rawCpu : null;
     const rawHeap = finiteSample(serviceSample(heap, id)?.value?.[1]);
     const heapValue = rawHeap !== null && rawHeap >= 0 ? rawHeap : null;
     const used = heapUsed?.kind === 'success' ? heapUsed.data.filter(item => item.metric?.application === id) : [];
-    const maximum = heapMax?.kind === 'success' ? heapMax.data.filter(item => item.metric?.application === id) : [];
-    const maximumByInstance = new Map();
-    maximum.forEach(item => {
-      const key = item.metric?.instance ?? '';
-      const limit = finiteSample(item.value?.[1]);
-      const previous = maximumByInstance.get(key);
-      maximumByInstance.set(key, limit > 0 && (previous === undefined || previous > 0) ? (previous ?? 0) + limit : null);
-    });
+    const committed = heapCommitted?.kind === 'success' ? heapCommitted.data.filter(item => item.metric?.application === id) : [];
+    const committedByInstance = new Map(committed.map(item => [item.metric?.instance, finiteSample(item.value?.[1])]));
     const ratios = used.map(item => {
       const current = finiteSample(item.value?.[1]);
-      const limit = maximumByInstance.get(item.metric?.instance ?? '');
-      return current !== null && current >= 0 && limit > 0 ? current / limit : null;
+      const instance = item.metric?.instance;
+      const limit = committedByInstance.get(instance);
+      return instance && current !== null && current >= 0 && limit > 0 && current <= limit ? current / limit : null;
     });
-    const heapRatio = used.length && ratios.every(value => value !== null) ? Math.max(...ratios) : null;
-    const ratioState = heapUsed?.kind === 'error' || heapMax?.kind === 'error' ? '조회 실패'
-      : heapUsed?.kind === 'loading' || heapMax?.kind === 'loading' ? '조회 중' : null;
+    const uniqueUsedInstances = new Set(used.map(item => item.metric?.instance));
+    const heapRatio = used.length > 0 && used.length === committed.length
+      && uniqueUsedInstances.size === used.length && committedByInstance.size === committed.length
+      && ratios.every(value => value !== null) ? Math.max(...ratios) : null;
+    const ratioState = heapUsed?.kind === 'error' || heapCommitted?.kind === 'error' ? '조회 실패'
+      : heapUsed?.kind === 'loading' || heapCommitted?.kind === 'loading' ? '조회 중' : null;
     return { id, cpuValue, heapValue, heapRatio, ratioState };
   });
   return <article className="panel msa-viz-card" aria-label="서비스별 CPU와 Heap 사용량">
-    <h3 className="panel-title">CPU / Heap 사용 현황</h3><p className="panel-sub">CPU: 인스턴스 최대 · Heap MiB: 서비스 합계 · Heap %: 인스턴스 최대</p>
+    <h3 className="panel-title">CPU / Heap 사용 현황</h3><p className="panel-sub">CPU: 인스턴스 최대 · Heap MiB: 서비스 합계 · Heap %: 인스턴스별 Committed 대비 최대</p>
     <div className="msa-resource-rows">{rows.map(({ id, cpuValue, heapValue, heapRatio, ratioState }) => {
       const cpuState = requestState(cpu, statuses[id]);
       const heapState = requestState(heap, statuses[id]);
       return <div className="msa-resource-row" key={id}><strong>{id}</strong>
         <div className="msa-gauge-line"><span>CPU</span><div className="msa-viz-track" aria-hidden="true">{cpuValue !== null && !cpuState && <span className="msa-viz-fill" style={{ width: `${Math.min(100, Math.max(0, cpuValue * 100))}%` }} />}</div><span>{cpuState ?? (cpuValue === null ? '미수집' : `${(cpuValue * 100).toFixed(1)}%`)}</span></div>
-        <div className="msa-gauge-line"><span>Heap</span><div className="msa-viz-track" aria-hidden="true">{heapRatio !== null && !heapState && !ratioState && <span className="msa-viz-fill" style={{ width: `${Math.min(100, Math.max(0, heapRatio * 100))}%` }} />}</div><span>{heapState ?? (heapValue === null ? '미수집' : `${(heapValue / 1048576).toFixed(1)} MiB · ${ratioState ?? (heapRatio === null ? '계산 불가' : `${(heapRatio * 100).toFixed(1)}%`)}`)}</span></div>
+        <div className="msa-gauge-line"><span>Heap</span><div className="msa-viz-track" aria-hidden="true">{heapRatio !== null && !heapState && !ratioState && <span className="msa-viz-fill" style={{ width: `${Math.min(100, Math.max(0, heapRatio * 100))}%` }} />}</div><span>{heapState ?? (heapValue === null ? '미수집' : `${(heapValue / 1048576).toFixed(1)} MiB · ${ratioState ?? (heapRatio === null ? '계산 불가' : `${(heapRatio * 100).toFixed(1)}% · Committed 대비`)}`)}</span></div>
       </div>;
     })}</div>
   </article>;
