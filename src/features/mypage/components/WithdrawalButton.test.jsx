@@ -15,6 +15,7 @@ test('버튼 클릭만으로 탈퇴하지 않으며 접수 202 후 세션을 지
   withdrawUser.mockResolvedValue({ status: 202 }); show();
   fireEvent.click(screen.getByRole('button', { name: '회원탈퇴', exact: true }));
   expect(withdrawUser).not.toHaveBeenCalled();
+  expect(screen.getByText(/다시 로그인해 알림에서 사유를 확인/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('현재 비밀번호'), { target: { value: 'password' } });
   fireEvent.click(screen.getByRole('button', { name: '회원탈퇴 확인' }));
   await screen.findByText('/login');

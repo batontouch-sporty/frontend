@@ -45,7 +45,7 @@ export default function WithdrawalButton() {
     <button type="button" ref={trigger} className="mypage-withdraw-trigger" onClick={() => setOpen(true)}>회원탈퇴</button>
     {open && <dialog ref={dialog} className="mypage-withdraw-dialog" aria-labelledby="withdraw-title" onCancel={e => { e.preventDefault(); closeHandler(); }}>
       <h2 id="withdraw-title">회원탈퇴</h2>
-      <p>탈퇴하면 계정을 쓸 수 없고 로그아웃돼요.<br />계속하려면 현재 비밀번호를 입력해주세요.</p>
+      <p>탈퇴를 신청하면 바로 로그아웃돼요. 탈퇴가 거절되면 다시 로그인해 알림에서 사유를 확인할 수 있어요.<br />계속하려면 현재 비밀번호를 입력해주세요.</p>
       <form onSubmit={withdrawalHandler} aria-busy={pending}>
         <label htmlFor="withdraw-password">현재 비밀번호</label>
         <input id="withdraw-password" type="password" autoComplete="current-password" autoFocus value={password} disabled={pending} onChange={e => setPassword(e.target.value)} />
