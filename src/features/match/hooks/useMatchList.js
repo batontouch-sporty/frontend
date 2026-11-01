@@ -98,7 +98,7 @@ export default function useMatchList() {
     try {
       const rows = await fetchRecommendedMatches(request.signal);
       if (request.signal.aborted) return;
-      setRecommendations(rows); setRecommendationStatus('success');
+      setRecommendations(rows); setRecommendationStatus('success'); setRecommendationError('');
     } catch (error) {
       if (request.signal.aborted) return;
       setRecommendationError(matchRequestError(error, 'recommendation'));

@@ -187,3 +187,16 @@ test('a quiet reload failure keeps the rows already on screen', async () => {
   expect(result.current.status).toBe('success');
   expect(result.current.matches.map(match => match.id)).toEqual([7]);
 });
+
+test('a successful quiet reload clears the recommendation error left by an earlier failure', async () => {
+  localStorage.setItem('at', 'test-token');
+  requestMatchParticipation.mockResolvedValue({});
+  fetchRecommendedMatches.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce([]);
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('success'));
+  await act(async () => { await result.current.onJoin(7); });
+  expect(result.current.recommendationError).not.toBe('');
+  await act(async () => { await result.current.onJoin(8); });
+  expect(fetchRecommendedMatches).toHaveBeenCalledTimes(3);
+  expect(result.current.recommendationError).toBe('');
+});
