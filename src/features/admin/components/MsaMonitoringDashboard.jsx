@@ -23,11 +23,24 @@ const timeFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul',
 
 const unlinked = '미연동';
 
-// 현재 검증된 실측 시계열은 Prometheus 자체의 up{job="prometheus"}뿐이다.
-// 서비스는 up 응답의 job이 서비스 ID와 정확히 일치할 때만 상태를 판단한다.
+const serviceMetric = item => item.metric?.job === 'sporty-services'
+  && services.some(([id]) => item.metric.application === id);
+const serviceSeries = (data, selected) => data.filter(item => serviceMetric(item)
+  && (selected === 'all' || item.metric.application === selected));
+const metricQueries = {
+  rps: 'sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services"}[5m]))',
+  p95: 'histogram_quantile(0.95, sum by (application, le) (rate(http_server_requests_seconds_bucket{job="sporty-services"}[5m])))',
+  errors: 'sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services",status=~"5.."}[5m])) / sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services"}[5m])) or on (application) (0 * sum by (application) (rate(http_server_requests_seconds_count{job="sporty-services"}[5m])))',
+  heap: 'sum by (application) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
+  cpu: 'max by (application) (process_cpu_usage{job="sporty-services"})',
+  gc: 'sum by (application) (rate(jvm_gc_pause_seconds_count{job="sporty-services"}[5m]))',
+  threads: 'sum by (application) (jvm_threads_live_threads{job="sporty-services"})',
+};
+
+// Prometheus 설정의 application 레이블로 비즈니스 서비스를 식별한다.
 export function statusFromUp(result, serviceId) {
-  const samples = result.filter(item => item.metric?.job === serviceId)
-    .map(item => Number(item.value?.[1])).filter(Number.isFinite);
+  const samples = result.filter(item => serviceMetric(item) && item.metric.application === serviceId)
+    .map(item => Number(item.value?.[1])).filter(value => value === 0 || value === 1);
   if (samples.length === 0) return 'missing';
   if (samples.every(value => value === 0)) return 'down';
   if (samples.some(value => value === 0)) return 'partial';
@@ -38,6 +51,7 @@ function useUpMetrics(sessionSignal, range, revision) {
   const [instant, setInstant] = useState({ kind: 'loading' });
   const [history, setHistory] = useState({ kind: 'loading' });
   const [updated, setUpdated] = useState(null);
+  const [metrics, setMetrics] = useState({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,6 +61,7 @@ function useUpMetrics(sessionSignal, range, revision) {
     setInstant({ kind: 'loading' });
     setHistory({ kind: 'loading' });
     setUpdated(null);
+    setMetrics(Object.fromEntries(Object.keys(metricQueries).map(key => [key, { kind: 'loading' }])));
     const end = Math.floor(Date.now() / 1000);
     const step = range === '24h' ? 300 : 60;
     if (!controller.signal.aborted) {
@@ -61,11 +76,40 @@ function useUpMetrics(sessionSignal, range, revision) {
       queryRange({ query: 'up', start: end - ranges[range], end, step, signal: controller.signal })
         .then(data => { if (!controller.signal.aborted) setHistory({ kind: 'success', data }); })
         .catch(() => { if (!controller.signal.aborted) setHistory({ kind: 'error' }); });
+      Object.entries(metricQueries).forEach(([key, query]) => {
+        queryInstant({ query, signal: controller.signal })
+          .then(data => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'success', data } })); })
+          .catch(() => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'error' } })); });
+      });
     }
     return () => { sessionSignal?.removeEventListener('abort', abort); controller.abort(); };
   }, [sessionSignal, range, revision]);
 
-  return { instant, history, updated };
+  return { instant, history, metrics, updated };
+}
+
+function metricValue(request, serviceId) {
+  if (!request || request.kind !== 'success') return null;
+  // PromQL의 by(application) 집계 결과에는 job 레이블이 남지 않는다.
+  const values = request.data.filter(item => services.some(([id]) => item.metric?.application === id)
+    && (serviceId === 'all' || item.metric.application === serviceId))
+    .map(item => Number(item.value?.[1])).filter(Number.isFinite);
+  return values.length ? values : null;
+}
+
+function displayedMetric(request, serviceId, key) {
+  if (request?.kind === 'loading') return '조회 중';
+  if (request?.kind === 'error') return '조회 실패';
+  const values = metricValue(request, serviceId);
+  if (!values) return '미수집';
+  const value = key === 'rps' || key === 'heap' || key === 'gc' || key === 'threads'
+    ? values.reduce((sum, item) => sum + item, 0) : Math.max(...values);
+  if (key === 'heap') return `${(value / 1024 / 1024).toFixed(1)} MiB`;
+  if (key === 'p95') return `${(value * 1000).toFixed(0)} ms`;
+  if (key === 'cpu' || key === 'errors') return `${(value * 100).toFixed(1)}%`;
+  if (key === 'gc') return `${value.toFixed(2)} /s`;
+  if (key === 'threads') return `${Math.round(value)}`;
+  return `${value.toFixed(2)} RPS`;
 }
 
 function Status({ kind }) {
@@ -89,19 +133,22 @@ function EmptyMetric({ title, description, kind = 'missing' }) {
 }
 
 function UpChart({ data, selected }) {
-  const series = data.filter(item => services.some(([id]) => item.metric?.job === id)
-    && (selected === 'all' || item.metric.job === selected));
+  const series = serviceSeries(data, selected);
   if (series.length === 0) return <EmptyMetric title="서비스 시계열 미수집" description="선택한 서비스의 up 시계열이 없습니다. 타깃 부재를 DOWN이나 0으로 표시하지 않습니다." />;
   const colors = ['#141a22', '#15803d', '#9a5b00', '#5b6675', '#596aa6'];
+  const allTimes = series.flatMap(item => item.values
+    .filter(([time, value]) => Number.isFinite(time) && Number.isFinite(Number(value)))
+    .map(([time]) => time));
+  if (!allTimes.length) return <EmptyMetric title="데이터 없음" description="수집된 서비스 시계열에 표시 가능한 값이 없습니다." />;
+  const first = Math.min(...allTimes);
+  const last = Math.max(...allTimes);
   const paths = series.map((item, index) => {
     const finite = item.values.filter(([time, value]) => Number.isFinite(time) && Number.isFinite(Number(value)));
     if (finite.length === 0) return null;
-    const first = finite[0][0];
-    const last = finite.at(-1)[0];
     let connected = false;
     const path = item.values.map(([time, raw]) => {
       const value = Number(raw);
-      if (!Number.isFinite(value)) { connected = false; return ''; }
+      if (!Number.isFinite(time) || !Number.isFinite(value)) { connected = false; return ''; }
       const x = last === first ? 300 : 6 + (time - first) / (last - first) * 588;
       const y = 170 - Math.max(0, Math.min(1, value)) * 135;
       const point = `${x.toFixed(1)} ${y.toFixed(1)}`;
@@ -109,7 +156,7 @@ function UpChart({ data, selected }) {
       connected = true;
       return command;
     }).filter(Boolean).join(' ');
-    return { key: `${item.metric.job}-${index}`, name: item.metric.job, color: colors[index % colors.length], path, first, last };
+    return { key: `${item.metric.application}-${index}`, name: item.metric.application, color: colors[index % colors.length], path };
   }).filter(Boolean);
   if (paths.length === 0) return <EmptyMetric title="데이터 없음" description="수집된 서비스 시계열에 표시 가능한 값이 없습니다." />;
   return <>
@@ -117,7 +164,7 @@ function UpChart({ data, selected }) {
       {[35, 102, 170].map(y => <line className="chart-grid" key={y} x1="0" x2="600" y1={y} y2={y} />)}
       {paths.map(item => <path key={item.key} d={item.path} fill="none" stroke={item.color} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
     </svg>
-    <div className="chart-labels"><span>{timeFormatter.format(new Date(paths[0].first * 1000))}</span><span>1 UP · 0 DOWN</span><span>{timeFormatter.format(new Date(paths[0].last * 1000))}</span></div>
+    <div className="chart-labels"><span>{timeFormatter.format(new Date(first * 1000))}</span><span>1 UP · 0 DOWN</span><span>{timeFormatter.format(new Date(last * 1000))}</span></div>
     <ul className="msa-chart-legend">{paths.map(item => <li key={item.key}><span style={{ background: item.color }} />{item.name}</li>)}</ul>
   </>;
 }
@@ -138,7 +185,6 @@ function Overview({ instant, history, selected }) {
 const unavailableAreas = {
   feign: ['OpenFeign 호출 시간', 'Circuit Breaker 상태', '호출 관계', 'Feign·Circuit Breaker의 메트릭 이름과 레이블이 아직 실측으로 확인되지 않았습니다.'],
   kafka: ['Consumer Group Lag', '이벤트 처리량', 'DLT 발행', 'Consumer 중단 중 Lag를 관측할 Exporter와 이벤트 계측이 아직 확인되지 않았습니다.'],
-  jvm: ['Heap 사용률', 'CPU·GC·스레드', '서비스별 리소스', 'JVM 메트릭의 노출 및 Prometheus 수집이 아직 확인되지 않았습니다.'],
   domain: ['도메인 이벤트 추이', '매치·AI 지표', 'Saga 결과', '도메인·AI 기간 메트릭은 미연동입니다. 아래 A28·A29 누적 통계를 확인하세요.'],
 };
 
@@ -149,20 +195,32 @@ function UnlinkedArea({ tab }) {
       <article className="panel chart-card"><div className="chart-header"><div><h3 className="panel-title">{chart}</h3><p className="panel-sub">계측 확인 후 A31 시계열 연결</p></div><span className="chart-key">{unlinked}</span></div><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>메트릭 미연동</div></div></article>
       <article className="panel"><div className="panel-head"><div><h3 className="panel-title">{summary}</h3><p className="panel-sub">실제 데이터 확인 전까지 값을 표시하지 않습니다.</p></div><span className="tiny-tag">미연동</span></div><div className="info-callout"><strong>계측 대기</strong><br />{message}</div></article>
     </div>
-    <div className="panel msa-secondary-panel"><h3 className="panel-title">{detail}</h3><p className="panel-sub">Backend #48의 계측·레이블 확정 뒤 실제 데이터로 연결합니다.</p><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>데이터 미연동</div></div></div>
+    <div className="panel msa-secondary-panel"><h3 className="panel-title">{detail}</h3><p className="panel-sub">Backend #50·PR #51의 공통 수집 범위 밖에 있는 지표는 계측 확인 후 연결합니다.</p><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>데이터 미연동</div></div></div>
   </>;
 }
 
 function DetailData({ tab, history, selected }) {
+  if (tab === 'jvm') return <p>JVM 지표는 A30 현재 값입니다. 시계열은 연결 후 이곳에 표시합니다.</p>;
   if (tab !== 'overview') return <p>이 영역의 계측이 확인되지 않아 상세 데이터가 없습니다.</p>;
   if (history.kind === 'loading') return <p role="status">시계열을 조회하는 중입니다.</p>;
   if (history.kind === 'error') return <p role="alert">시계열 조회에 실패했습니다.</p>;
-  const series = history.data.filter(item => services.some(([id]) => item.metric?.job === id)
-    && (selected === 'all' || item.metric.job === selected));
+  const series = serviceSeries(history.data, selected);
   if (!series.length) return <p>수집된 서비스 시계열이 없습니다.</p>;
   return <div className="scroll-table"><table className="detail-table"><thead><tr><th scope="col">시각 (KST)</th><th scope="col">영역</th><th scope="col">서비스</th><th scope="col">값</th></tr></thead><tbody>
-    {series.flatMap((item, seriesIndex) => item.values.slice(-10).map(([timestamp, value], index) => <tr key={`${seriesIndex}-${index}`}><td><time dateTime={new Date(timestamp * 1000).toISOString()}>{timeFormatter.format(new Date(timestamp * 1000))}</time></td><td>서비스 개요</td><td>{item.metric.job}</td><td>{value}</td></tr>))}
+    {series.flatMap((item, seriesIndex) => item.values.slice(-10).map(([timestamp, value], index) => <tr key={`${seriesIndex}-${index}`}><td><time dateTime={new Date(timestamp * 1000).toISOString()}>{timeFormatter.format(new Date(timestamp * 1000))}</time></td><td>서비스 개요</td><td>{item.metric.application}</td><td>{value}</td></tr>))}
   </tbody></table></div>;
+}
+
+function JvmArea({ metrics, selected }) {
+  const rows = services.filter(([id]) => selected === 'all' || selected === id);
+  return <div className="content-grid">
+    <article className="panel chart-card"><div className="panel-head"><div><h3 className="panel-title">JVM · 리소스</h3><p className="panel-sub">Backend #50 공통 계측 · A30 현재 값</p></div><span className="tiny-tag">A30</span></div>
+      <div className="scroll-table"><table className="detail-table"><thead><tr><th scope="col">서비스</th><th scope="col">Heap 사용</th><th scope="col">CPU</th><th scope="col">GC 빈도</th><th scope="col">스레드</th></tr></thead><tbody>
+        {rows.map(([id]) => <tr key={id}><td>{id}</td><td>{displayedMetric(metrics.heap, id, 'heap')}</td><td>{displayedMetric(metrics.cpu, id, 'cpu')}</td><td>{displayedMetric(metrics.gc, id, 'gc')}</td><td>{displayedMetric(metrics.threads, id, 'threads')}</td></tr>)}
+      </tbody></table></div></article>
+    <article className="panel"><div className="panel-head"><div><h3 className="panel-title">단위 안내</h3><p className="panel-sub">미수집과 실제 0은 구분합니다.</p></div></div>
+      <dl className="metric-list"><div><dt>Heap</dt><dd>MiB</dd></div><div><dt>CPU</dt><dd>%</dd></div><div><dt>GC</dt><dd>회/s</dd></div><div><dt>스레드</dt><dd>개</dd></div></dl></article>
+  </div>;
 }
 
 export default function MsaMonitoringDashboard({ sessionSignal }) {
@@ -170,7 +228,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
   const [selected, setSelected] = useState('all');
   const [tab, setTab] = useState('overview');
   const [revision, setRevision] = useState(0);
-  const { instant, history, updated } = useUpMetrics(sessionSignal, range, revision);
+  const { instant, history, metrics, updated } = useUpMetrics(sessionSignal, range, revision);
   const shown = services.filter(([id]) => selected === 'all' || selected === id);
   const statuses = shown.map(([id]) => instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind);
   const upCount = statuses.filter(status => status === 'up').length;
@@ -207,20 +265,20 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
     <div className="admin-dashboard-inner msa-content">
       <section className="kpi-grid" aria-label="운영 요약">
         <Kpi label="정상 서비스" value={summary} icon="✓" foot={instant.kind === 'success' ? `수집 ${observedCount} · DOWN ${downCount} · 미수집 ${missingCount}` : '서비스 상태 조회'} tone={downCount ? 'is-danger' : missingCount ? 'is-warn' : ''} />
-        <Kpi label="전체 요청량" value={unlinked} icon="↗" foot="HTTP 요청 메트릭 확인 필요" tone="is-muted" />
-        <Kpi label="P95 응답시간" value={unlinked} icon="◷" foot="Histogram bucket 확인 필요" tone="is-muted" />
-        <Kpi label="HTTP 5xx" value={unlinked} icon="!" foot="HTTP 상태 메트릭 확인 필요" tone="is-muted" />
+        <Kpi label="전체 요청량" value={displayedMetric(metrics.rps, selected, 'rps')} icon="↗" foot="수집된 서비스의 5분 평균 합계" />
+        <Kpi label="P95 응답시간" value={displayedMetric(metrics.p95, selected, 'p95')} icon="◷" foot="서비스별 P95 중 최대 · ms" />
+        <Kpi label="HTTP 5xx" value={displayedMetric(metrics.errors, selected, 'errors')} icon="!" foot="서비스별 5xx 오류율 중 최대" />
         <Kpi label="Kafka Lag" value={unlinked} icon="▤" foot="Consumer Lag Exporter 확인 필요" tone="is-muted" />
       </section>
       <section className="section" aria-labelledby="msa-services-title"><div className="section-heading"><div><p className="section-kicker">01 / LIVE OVERVIEW</p><h2 id="msa-services-title">서비스별 상태</h2><p className="section-desc">UP·DOWN·미수집을 분리하고, 선택한 서비스를 강조합니다.</p></div><span className="section-aside">5개 비즈니스 서비스</span></div>
-        <div className="panel"><div className="panel-head"><div><h3 className="panel-title">서비스 운영 현황</h3><p className="panel-sub">상태는 Prometheus up으로 확인합니다. 성능 지표는 계측 대기 중입니다.</p></div><span className="tiny-tag">A30</span></div>
-          <div className="service-table-wrap"><table className="service-table"><thead><tr><th scope="col">서비스</th><th scope="col">상태</th><th scope="col">요청량</th><th scope="col">P95</th><th scope="col">5xx 오류율</th></tr></thead><tbody>{services.map(([id, type]) => <tr key={id} className={selected === id ? 'selected-row' : ''}><td><span className="service-name">{id}</span><span className="service-type">{type}</span></td><td><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></td><td>{unlinked}</td><td>{unlinked}</td><td>{unlinked}</td></tr>)}</tbody></table></div>
-          <div className="service-mobile">{services.map(([id, type]) => <div className="service-item" key={id}><div className="service-item-head"><div><span className="service-name">{id}</span><span className="service-type">{type}</span></div><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></div><div className="service-item-data"><div><span>요청량</span><strong>{unlinked}</strong></div><div><span>P95</span><strong>{unlinked}</strong></div><div><span>5xx</span><strong>{unlinked}</strong></div></div></div>)}</div>
+        <div className="panel"><div className="panel-head"><div><h3 className="panel-title">서비스 운영 현황</h3><p className="panel-sub">상태는 Prometheus up, 성능은 HTTP 계측으로 확인합니다.</p></div><span className="tiny-tag">A30</span></div>
+          <div className="service-table-wrap"><table className="service-table"><thead><tr><th scope="col">서비스</th><th scope="col">상태</th><th scope="col">요청량</th><th scope="col">P95</th><th scope="col">5xx 오류율</th></tr></thead><tbody>{services.map(([id, type]) => <tr key={id} className={selected === id ? 'selected-row' : ''}><td><span className="service-name">{id}</span><span className="service-type">{type}</span></td><td><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></td><td>{displayedMetric(metrics.rps, id, 'rps')}</td><td>{displayedMetric(metrics.p95, id, 'p95')}</td><td>{displayedMetric(metrics.errors, id, 'errors')}</td></tr>)}</tbody></table></div>
+          <div className="service-mobile">{services.map(([id, type]) => <div className="service-item" key={id}><div className="service-item-head"><div><span className="service-name">{id}</span><span className="service-type">{type}</span></div><Status kind={instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind} /></div><div className="service-item-data"><div><span>요청량</span><strong>{displayedMetric(metrics.rps, id, 'rps')}</strong></div><div><span>P95</span><strong>{displayedMetric(metrics.p95, id, 'p95')}</strong></div><div><span>5xx</span><strong>{displayedMetric(metrics.errors, id, 'errors')}</strong></div></div></div>)}</div>
         </div>
       </section>
       <section className="section" aria-labelledby="msa-metrics-title"><div className="section-heading"><div><p className="section-kicker">02 / METRICS</p><h2 id="msa-metrics-title">상세 모니터링</h2><p className="section-desc">운영 흐름별로 필요한 지표를 살펴봅니다.</p></div><span className="section-aside">{rangeLabels[range]}</span></div>
         <div className="tabs" role="tablist" aria-label="모니터링 영역" onKeyDown={tabKeyDown}>{tabs.map(([id, label]) => <button className="tab" role="tab" type="button" id={`msa-tab-${id}`} key={id} aria-controls="msa-tab-content" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onClick={() => selectTab(id)}>{label}</button>)}</div>
-        <div id="msa-tab-content" role="tabpanel" aria-labelledby={`msa-tab-${tab}`} tabIndex={0}>{tab === 'overview' ? <Overview instant={instant} history={history} selected={selected} /> : <UnlinkedArea tab={tab} />}</div>
+        <div id="msa-tab-content" role="tabpanel" aria-labelledby={`msa-tab-${tab}`} tabIndex={0}>{tab === 'overview' ? <Overview instant={instant} history={history} selected={selected} /> : tab === 'jvm' ? <JvmArea metrics={metrics} selected={selected} /> : <UnlinkedArea tab={tab} />}</div>
         <details className="details"><summary>상세 데이터 보기 <span className="tiny-tag">A31</span></summary><div className="details-body"><p>선택한 영역의 실제 시계열 응답입니다.</p><DetailData tab={tab} history={history} selected={selected} /></div></details>
       </section>
     </div>
