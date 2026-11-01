@@ -22,7 +22,7 @@ test('수정 요청은 sportTypes로 매핑하고 이미지/회원정보를 보�
   expect(api.put).toHaveBeenCalledWith('/api/profiles/me', { nickname: '테스트', district: 'MAPO', sportTypes: [] });
 });
 test('탈퇴 비밀번호는 DELETE 요청 본문으로 보낸다', async () => {
-  api.delete.mockResolvedValue({ status: 204 });
+  api.delete.mockResolvedValue({ status: 202 });
   await withdrawUser('test-password');
   expect(api.delete).toHaveBeenCalledWith('/api/users/me', { data: { password: 'test-password' } });
 });

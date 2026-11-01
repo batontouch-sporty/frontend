@@ -28,15 +28,16 @@ export default function WithdrawalButton() {
     if (!password.trim()) { setError('비밀번호를 입력해주세요.'); return; }
     setPending(true); setError('');
     withdrawUser(password).then(response => {
-      if (response.status !== 204) throw new Error('Unexpected withdrawal response');
-      // 탈퇴 완료 후에만 세션을 정리한다. 실패한 요청을 탈퇴 성공으로 처리하지 않는다.
+      if (response.status !== 202) throw new Error('Unexpected withdrawal response');
+      // 탈퇴 접수 후에만 세션을 정리한다. 실패한 요청을 탈퇴 접수로 처리하지 않는다.
       localStorage.removeItem('at'); localStorage.removeItem('rt'); localStorage.removeItem('userId');
       moveUrl('/login', { replace: true });
     }).catch(requestError => {
       const status = requestError.response?.status;
       setError(status === 400 ? '비밀번호를 확인해주세요.' : status === 401
         ? '로그인이 만료됐어요. 다시 로그인한 후 시도해주세요.'
-        : '회원탈퇴를 완료하지 못했어요. 잠시 후 다시 시도해주세요.');
+        : status === 409 ? '이미 탈퇴를 처리하고 있어요. 잠시 후 다시 확인해주세요.'
+          : '회원탈퇴를 완료하지 못했어요. 잠시 후 다시 시도해주세요.');
     }).finally(() => setPending(false));
   };
 
@@ -44,7 +45,7 @@ export default function WithdrawalButton() {
     <button type="button" ref={trigger} className="mypage-withdraw-trigger" onClick={() => setOpen(true)}>회원탈퇴</button>
     {open && <dialog ref={dialog} className="mypage-withdraw-dialog" aria-labelledby="withdraw-title" onCancel={e => { e.preventDefault(); closeHandler(); }}>
       <h2 id="withdraw-title">회원탈퇴</h2>
-      <p>탈퇴하면 계정을 쓸 수 없고 로그아웃돼요.<br />계속하려면 현재 비밀번호를 입력해주세요.</p>
+      <p>탈퇴를 신청하면 바로 로그아웃돼요. 탈퇴가 거절되면 다시 로그인해 알림에서 사유를 확인할 수 있어요.<br />계속하려면 현재 비밀번호를 입력해주세요.</p>
       <form onSubmit={withdrawalHandler} aria-busy={pending}>
         <label htmlFor="withdraw-password">현재 비밀번호</label>
         <input id="withdraw-password" type="password" autoComplete="current-password" autoFocus value={password} disabled={pending} onChange={e => setPassword(e.target.value)} />
