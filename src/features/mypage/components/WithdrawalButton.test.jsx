@@ -11,8 +11,8 @@ beforeAll(() => {
 beforeEach(() => { localStorage.setItem('at', 'test'); localStorage.setItem('rt', 'test'); localStorage.setItem('userId', '7'); });
 afterEach(() => { localStorage.clear(); jest.clearAllMocks(); });
 const show = () => render(<MemoryRouter initialEntries={['/mypage']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><WithdrawalButton /><Location /></MemoryRouter>);
-test('버튼 클릭만으로 탈퇴하지 않으며 성공 204 후 세션을 지우고 로그인으로 이동한다', async () => {
-  withdrawUser.mockResolvedValue({ status: 204 }); show();
+test('버튼 클릭만으로 탈퇴하지 않으며 접수 202 후 세션을 지우고 로그인으로 이동한다', async () => {
+  withdrawUser.mockResolvedValue({ status: 202 }); show();
   fireEvent.click(screen.getByRole('button', { name: '회원탈퇴', exact: true }));
   expect(withdrawUser).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('현재 비밀번호'), { target: { value: 'password' } });
@@ -32,4 +32,20 @@ test('비밀번호 오류 시 세션은 유지하고 닫았다 열면 입력은 
   fireEvent.click(screen.getByRole('button', { name: '취소' }));
   fireEvent.click(screen.getByRole('button', { name: '회원탈퇴', exact: true }));
   expect(screen.getByLabelText('현재 비밀번호')).toHaveValue('');
+});
+test('이미 탈퇴 처리 중이면 안내하고 세션을 유지한다', async () => {
+  withdrawUser.mockRejectedValue({ response: { status: 409, data: { code: 'WITHDRAWAL_IN_PROGRESS' } } }); show();
+  fireEvent.click(screen.getByRole('button', { name: '회원탈퇴', exact: true }));
+  fireEvent.change(screen.getByLabelText('현재 비밀번호'), { target: { value: 'password' } });
+  fireEvent.click(screen.getByRole('button', { name: '회원탈퇴 확인' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('이미 탈퇴를 처리하고 있어요');
+  expect(localStorage.getItem('at')).toBe('test');
+});
+test('202가 아닌 성공 응답은 탈퇴 접수로 처리하지 않는다', async () => {
+  withdrawUser.mockResolvedValue({ status: 204 }); show();
+  fireEvent.click(screen.getByRole('button', { name: '회원탈퇴', exact: true }));
+  fireEvent.change(screen.getByLabelText('현재 비밀번호'), { target: { value: 'password' } });
+  fireEvent.click(screen.getByRole('button', { name: '회원탈퇴 확인' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('회원탈퇴를 완료하지 못했어요');
+  expect(localStorage.getItem('at')).toBe('test');
 });
