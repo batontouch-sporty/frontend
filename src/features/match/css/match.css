@@ -74,8 +74,12 @@
 .match-form .match-stepper button:active:not(:disabled) { background: var(--canvas); }
 /* − / 숫자·명 / + 를 대칭으로 두고 숫자 묶음을 가운데에 놓는다. */
 .match-stepper-value { display: flex; flex: 1; align-items: baseline; justify-content: center; gap: 4px; min-width: 0; }
-.match-form .match-stepper input { flex: 0 0 auto; width: 3.5ch; min-width: 0; min-height: 0; padding: 0; border: 0; box-shadow: none; text-align: right; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; appearance: textfield; }
+.match-form .match-stepper input { flex: 0 1 auto; width: 5ch; min-width: 0; min-height: 0; padding: 0; border: 0; box-shadow: none; text-align: right; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; appearance: textfield; }
 .match-stepper input::-webkit-inner-spin-button { appearance: none; }
+/* 지원 브라우저에서는 입력한 숫자 길이만큼 칸이 늘어나 큰 숫자도 잘리지 않는다. 미지원 브라우저는 5ch(4자리)까지 표시. */
+@supports (field-sizing: content) {
+  .match-form .match-stepper input { width: auto; min-width: 2ch; max-width: 10ch; field-sizing: content; }
+}
 .match-stepper-value > span { color: var(--muted); font-size: 13px; }
 /* 스테퍼는 숫자칸 대신 바깥 상자에 윤곽선을 그린다. +/− 버튼은 자체 포커스 윤곽선을 쓴다. */
 .match-form .match-stepper input:focus-visible { outline: none; }
