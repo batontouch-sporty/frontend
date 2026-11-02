@@ -137,7 +137,7 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
       </Step>
       <Step number="4" title="누구와 함께할까요?">
         <div className="match-grid">
-          <div className="match-control"><label htmlFor="maxParticipant">모집 최대 인원 (방장 포함)</label><div className="match-stepper"><button type="button" aria-label="모집 인원 줄이기" disabled={Number(values.maxParticipant) <= 2} onClick={() => update('maxParticipant', Math.max(2, Number(values.maxParticipant) - 1))}>−</button><input type="number" min="2" step="1" {...fieldProps('maxParticipant')} /><span>명</span><button type="button" aria-label="모집 인원 늘리기" onClick={() => update('maxParticipant', Number(values.maxParticipant) + 1)}>+</button></div>{errorText('maxParticipant')}</div>
+          <div className="match-control"><label htmlFor="maxParticipant">모집 최대 인원 (방장 포함)</label><div className="match-stepper"><button type="button" aria-label="모집 인원 줄이기" disabled={Number(values.maxParticipant) <= 2} onClick={() => update('maxParticipant', Math.max(2, Number(values.maxParticipant) - 1))}>−</button><input type="number" min="2" step="1" {...fieldProps('maxParticipant')} /><span>명</span><button type="button" aria-label="모집 인원 늘리기" onClick={() => update('maxParticipant', Math.max(2, (Number(values.maxParticipant) || 0) + 1))}>+</button></div>{errorText('maxParticipant')}</div>
           <div className="match-control">
             <label htmlFor="genderGroup">성별 구성</label>
             {/* TODO: fieldProps('genderGroup')와 errorText('genderGroup')를 연결하세요. */}

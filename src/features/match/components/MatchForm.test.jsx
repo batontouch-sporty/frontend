@@ -37,6 +37,14 @@ test('requires at least two participants including the owner', () => {
   expect(validateMatch(initialMatchValues({ ...match, maxParticipant: 2 })).maxParticipant).toBeUndefined();
 });
 
+test('keeps the participant stepper at two or more when the field is empty', () => {
+  render(<MatchForm onSubmit={jest.fn()} />);
+  const field = screen.getByLabelText('모집 최대 인원 (방장 포함)');
+  fireEvent.change(field, { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: '모집 인원 늘리기' }));
+  expect(field).toHaveValue(2);
+});
+
 test('offers three skill levels with their meaning and submits the selection', async () => {
   const submit = jest.fn().mockResolvedValue(undefined);
   render(<MatchForm initialValues={match} selectedFacility={facility} onSubmit={submit} />);
