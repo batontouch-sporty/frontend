@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { clearSession } from '../../../api/axios';
-import { fetchMatchList, fetchRecommendedMatches, requestMatchParticipation, matchRequestError } from '../api/matchListApi';
+import { fetchMatchList, fetchRecommendedMatches, requestMatchParticipation, matchRequestError, isRetryableError } from '../api/matchListApi';
 import { loadMyPage } from '../../mypage/api/myPageApi';
 import useMyMatchStates from '../../main/hooks/useMyMatchStates';
 import { districts, sports } from '../../auth/data/signUpOptions';
@@ -25,6 +25,8 @@ export default function useMatchList() {
   const [recommendationStatus, setRecommendationStatus] = useState('idle');
   const [listError, setListError] = useState('');
   const [recommendationError, setRecommendationError] = useState('');
+  const [recommendationFallback, setRecommendationFallback] = useState(false);
+  const [recommendationRetryable, setRecommendationRetryable] = useState(true);
   // { 매치 ID: { status: 'joining' | 'done' | 'error', message? } }: MatchRow의 joinState.
   const [joins, setJoins] = useState({});
   const myMatchStates = useMyMatchStates();
@@ -88,20 +90,23 @@ export default function useMatchList() {
   const loadRecommendations = useCallback(async ({ quiet = false } = {}) => {
     recommendationRequest.current?.abort();
     if (!localStorage.getItem('at')) {
-      setRecommendations([]); setRecommendationStatus('idle');
-      setRecommendationError('로그인하면 맞춤 추천을 볼 수 있어요.');
+      setRecommendations([]); setRecommendationStatus('login'); setRecommendationFallback(false);
+      setRecommendationError('');
       return;
     }
     const request = new AbortController();
     recommendationRequest.current = request;
     if (!quiet) { setRecommendationStatus('loading'); setRecommendationError(''); }
     try {
-      const rows = await fetchRecommendedMatches(request.signal);
+      const result = await fetchRecommendedMatches(request.signal);
       if (request.signal.aborted) return;
-      setRecommendations(rows); setRecommendationStatus('success'); setRecommendationError('');
+      const rows = Array.isArray(result) ? result : result?.matches || [];
+      setRecommendations(rows); setRecommendationFallback(result?.fallback === true);
+      setRecommendationStatus('success'); setRecommendationError('');
     } catch (error) {
       if (request.signal.aborted) return;
       setRecommendationError(matchRequestError(error, 'recommendation'));
+      setRecommendationRetryable(isRetryableError(error));
       setRecommendationStatus(current => (current === 'loading' ? 'error' : current));
     }
   }, []);
@@ -150,6 +155,7 @@ export default function useMatchList() {
     profile, profileStatus, matches: ordered.slice(0, limit), totalCount: ordered.length,
     recommendations: sortMatches(recommendations, recommendationSort),
     filters, dateTab, sort, recommendationSort, status, recommendationStatus, listError, recommendationError,
+    recommendationFallback, recommendationRetryable,
     joins: { ...myMatchStates, ...joins }, hasMore: limit < ordered.length,
     onSportChange: sportType => {
       setFilters(previous => ({ ...previous, sportType }));

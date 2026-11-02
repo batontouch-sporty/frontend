@@ -15,9 +15,10 @@ export async function fetchMatchList(filters = {}, signal) {
   const { data } = await api.get('/api/matches', { params, signal, timeout: 15000 });
   return readList(data);
 }
+// AI 추천 응답 { matches, fallback }. fallback=true면 취향 추천 대신 최신 매치를 준 것이다.
 export async function fetchRecommendedMatches(signal) {
   const { data } = await api.get('/api/ai/matches/recommendations', { signal, timeout: 15000 });
-  return readList(Array.isArray(data) ? data : data?.matches);
+  return { matches: readList(Array.isArray(data) ? data : data?.matches), fallback: data?.fallback === true };
 }
 export async function requestMatchParticipation(matchId) {
   if (!Number.isSafeInteger(matchId) || matchId < 1) throw new Error('매치 번호가 올바르지 않아요.');
@@ -30,11 +31,18 @@ export function toMatchListItem(dto) {
   // 메인과 같은 MatchRow 화면 모델을 쓴다. 목록은 상태를 모르면 참가를 막는다.
   return { ...toMatchCard(dto), sportType: dto.sportType, statusCode: dto.status, closed: dto.status !== 'RECRUITING' };
 }
+// 다시 시도해도 결과가 같은 오류(로그인·권한·회원 없음·미구현)에는 [다시 시도]를 보여주지 않는다.
+export function isRetryableError(error) {
+  const status = error?.response?.status;
+  return ![401, 403, 404, 501].includes(status);
+}
 export function matchRequestError(error, kind = 'list') {
   const status = error.response?.status;
   if (status === 401) return '로그인이 필요해요. 다시 로그인해 주세요.';
   if (status === 403) return '이 작업을 할 권한이 없어요.';
-  if (status === 501 || (status === 404 && kind === 'recommendation')) return '이 기능은 준비 중이에요.';
+  if (status === 501) return '이 기능은 준비 중이에요.';
+  if (kind === 'recommendation' && status === 404) return '회원 정보를 찾지 못했어요. 다시 로그인해 주세요.';
+  if (kind === 'recommendation' && status >= 500) return '추천 매치를 만들지 못했어요. 잠시 후 다시 시도해 주세요.';
   if (status === 409) return '이미 참가 중인 매치예요.';
   if (status === 400) return kind === 'join' ? '모집이 끝났거나 정원이 찼어요.' : '검색 조건을 확인해 주세요.';
   if (status === 404) return '매치를 찾을 수 없어요.';

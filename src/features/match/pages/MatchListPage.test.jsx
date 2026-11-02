@@ -53,7 +53,8 @@ test('real empty results do not fall back to example data', () => {
   renderPage({ status: 'success', recommendationStatus: 'success' });
   expect(screen.queryByRole('article')).not.toBeInTheDocument();
   expect(screen.getByText(/조건에 맞는 매치가 없어요/)).toBeInTheDocument();
-  expect(screen.getByText('추천 매치가 없어요.')).toBeInTheDocument();
+  expect(screen.getByText('지금 추천할 매치가 없어요.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: '매치 개설하기' })).toHaveAttribute('href', '/matches/new');
 });
 
 test('list failure and retry are independent from recommendation loading', () => {
@@ -130,4 +131,33 @@ test('recommendation expander appears past two rows and filter toggle counts hid
   fireEvent.click(toggle);
   expect(container.querySelector('.ml-filter-row')).toHaveClass('is-open');
   expect(toggle).toHaveTextContent('조건 접기');
+});
+
+test('logged-out visitors get a login link instead of an empty recommendation board', () => {
+  renderPage({ recommendationStatus: 'login' });
+  const board = screen.getByRole('region', { name: '회원 맞춤 추천 매치' });
+  expect(within(board).getByRole('link', { name: '로그인하기' })).toHaveAttribute('href', '/login?redirect=%2Fmatches%2Fsearch');
+  expect(within(board).queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
+  expect(within(board).queryByRole('combobox', { name: '추천 매치 정렬' })).not.toBeInTheDocument();
+});
+
+test('recommendation retry is shown only for errors that can recover', () => {
+  const { unmount } = renderPage({ recommendationStatus: 'error', recommendationError: '추천 매치를 만들지 못했어요.', onRecommendationRetry: jest.fn() });
+  expect(within(screen.getByRole('region', { name: '회원 맞춤 추천 매치' })).getByRole('button', { name: '다시 시도' })).toBeEnabled();
+  unmount();
+  renderPage({ recommendationStatus: 'error', recommendationError: '회원 정보를 찾지 못했어요.', recommendationRetryable: false });
+  expect(within(screen.getByRole('region', { name: '회원 맞춤 추천 매치' })).queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
+});
+
+test('fallback recommendations are labeled and sorting appears only with two or more rows', () => {
+  const row = id => ({ id, title: `매치 ${id}`, startAt: '2099-11-01T19:30:00' });
+  const { unmount } = renderPage({ recommendationStatus: 'success', recommendationFallback: true, recommendations: [row(1)] });
+  const board = screen.getByRole('region', { name: '회원 맞춤 추천 매치' });
+  expect(within(board).getByText(/최신 매치로 보여드려요/)).toBeInTheDocument();
+  expect(within(board).queryByRole('combobox', { name: '추천 매치 정렬' })).not.toBeInTheDocument();
+  unmount();
+  renderPage({ recommendationStatus: 'success', recommendations: [row(1), row(2)], onRecommendationSort: jest.fn() });
+  const sorted = screen.getByRole('region', { name: '회원 맞춤 추천 매치' });
+  expect(within(sorted).queryByText(/최신 매치로 보여드려요/)).not.toBeInTheDocument();
+  expect(within(sorted).getByRole('combobox', { name: '추천 매치 정렬' })).toBeEnabled();
 });

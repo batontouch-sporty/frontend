@@ -1,5 +1,5 @@
 import api from '../../../api/axios';
-import { fetchMatchList, fetchRecommendedMatches, requestMatchParticipation, toMatchListItem, matchRequestError } from './matchListApi';
+import { fetchMatchList, fetchRecommendedMatches, requestMatchParticipation, toMatchListItem, matchRequestError, isRetryableError } from './matchListApi';
 
 jest.mock('../../../api/axios', () => ({ get: jest.fn(), post: jest.fn() }));
 afterEach(() => jest.clearAllMocks());
@@ -29,7 +29,23 @@ test.each([{}, null, { matches: [] }])('rejects malformed list response %p', asy
 
 test.each([[dto], { matches: [dto] }])('accepts documented recommendation list %p', async data => {
   api.get.mockResolvedValue({ data });
-  expect(await fetchRecommendedMatches()).toHaveLength(1);
+  const result = await fetchRecommendedMatches();
+  expect(result.matches).toHaveLength(1);
+  expect(result.fallback).toBe(false);
+});
+
+test('passes the recommendation fallback flag through', async () => {
+  api.get.mockResolvedValue({ data: { matches: [dto], fallback: true } });
+  expect((await fetchRecommendedMatches()).fallback).toBe(true);
+});
+
+test('recommendation errors explain the AI-03 cases and only transient ones can be retried', () => {
+  expect(matchRequestError({ response: { status: 404 } }, 'recommendation')).toContain('회원 정보를 찾지 못했어요');
+  expect(matchRequestError({ response: { status: 500 } }, 'recommendation')).toContain('추천 매치를 만들지 못했어요');
+  expect(matchRequestError({ response: { status: 501 } }, 'recommendation')).toContain('준비 중');
+  expect(isRetryableError({ response: { status: 500 } })).toBe(true);
+  expect(isRetryableError(new Error('network'))).toBe(true);
+  [401, 403, 404, 501].forEach(status => expect(isRetryableError({ response: { status } })).toBe(false));
 });
 
 test('unknown and closed statuses cannot be joined', () => {

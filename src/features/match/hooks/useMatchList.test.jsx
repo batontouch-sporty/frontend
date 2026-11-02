@@ -200,3 +200,27 @@ test('a successful quiet reload clears the recommendation error left by an earli
   expect(fetchRecommendedMatches).toHaveBeenCalledTimes(3);
   expect(result.current.recommendationError).toBe('');
 });
+
+test('logged-out visitors get the login recommendation state without calling AI', async () => {
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('login'));
+  expect(fetchRecommendedMatches).not.toHaveBeenCalled();
+});
+
+test('keeps the AI recommendation fallback flag and marks 404 as not retryable', async () => {
+  localStorage.setItem('at', 'test-token');
+  fetchRecommendedMatches.mockResolvedValueOnce({ matches: [{ id: 3, title: '최신 매치' }], fallback: true });
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('success'));
+  expect(result.current.recommendationFallback).toBe(true);
+  expect(result.current.recommendations.map(match => match.id)).toEqual([3]);
+});
+
+test('a missing member is reported without a retry button', async () => {
+  localStorage.setItem('at', 'test-token');
+  fetchRecommendedMatches.mockRejectedValueOnce({ response: { status: 404 } });
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('error'));
+  expect(result.current.recommendationError).toContain('회원 정보를 찾지 못했어요');
+  expect(result.current.recommendationRetryable).toBe(false);
+});

@@ -13,6 +13,14 @@
 .ms-board.ml-board { min-height: 0; padding-bottom: 12px; }
 .ml-board-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
 .ml-board .ms-board-message { margin: 8px 0; }
+.ms-page .ml-board-action { display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 16px; border-radius: var(--radius-button); background: var(--volt); color: var(--ink); font-weight: 700; text-decoration: none; }
+.ml-board .ms-board-message .ml-board-action { display: flex; width: fit-content; }
+.ml-board-note { margin: 4px 0 8px; color: var(--on-ink-muted); font-size: 13px; }
+.ml-board-skeleton { display: grid; gap: 8px; margin: 8px 0; }
+.ml-skeleton-row { height: 64px; border-radius: 12px; background: linear-gradient(90deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.12) 50%, rgba(255,255,255,.06) 100%); background-size: 200% 100%; animation: ml-skeleton 1.2s ease-in-out infinite; }
+@keyframes ml-skeleton { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .ml-skeleton-row { animation: none; } }
+.ml-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ms-page .ml-board-more, .ml-page .ml-filter-toggle { display: none; }
 .ml-board label { color: var(--on-ink-muted); font-size: 13px; }
 .ml-board select { min-height: 44px; margin-left: 12px; padding: 0 8px; border: 1px solid var(--on-ink-muted); border-radius: var(--radius-field); background: var(--ink); color: var(--on-ink); font-size: 13px; }
