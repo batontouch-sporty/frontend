@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { queryInstant, queryRange } from '../api/adminApi';
 import { classifyUp, finiteSample, StatusDonut, P95Bars, HttpStatusBars, ResourceGauges, StatusHeatmap } from './MonitoringVisualizations';
 import { PerformanceChart } from './MonitoringTimeSeries';
+import DomainMetrics from './DomainMetrics';
 
 const services = [
   ['user-service', '회원 · 인증'],
@@ -37,10 +38,20 @@ const metricQueries = {
   statusCodes: 'sum by (application, status) (rate(http_server_requests_seconds_count{job="sporty-services",uri!~"/actuator.*",status=~"[2345].."}[5m]))',
   heap: 'sum by (application) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
   heapUsed: 'sum by (application, instance) (jvm_memory_used_bytes{job="sporty-services",area="heap"})',
-  heapCommitted: 'sum by (application, instance) (jvm_memory_committed_bytes{job="sporty-services",area="heap"})',
+  heapMax: 'jvm_memory_max_bytes{job="sporty-services",area="heap"}',
   cpu: 'max by (application) (process_cpu_usage{job="sporty-services"})',
   gc: 'sum by (application) (rate(jvm_gc_pause_seconds_count{job="sporty-services"}[5m]))',
   threads: 'sum by (application) (jvm_threads_live_threads{job="sporty-services"})',
+};
+const domainQueries = range => ({
+  saga: `sum by (outcome) (increase(sporty_withdrawal_saga_results_total{job="sporty-services",application="user-service",outcome=~"success|rejected|timed_out"}[${range}]))`,
+  late: `sum by (outcome) (increase(sporty_withdrawal_saga_late_results_total{job="sporty-services",application="user-service",outcome=~"cleaned|rejected"}[${range}]))`,
+  aiCount: `sum by (type, outcome) (increase(ai_request_seconds_count{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[${range}]))`,
+  aiSum: `sum by (type, outcome) (increase(ai_request_seconds_sum{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[${range}]))`,
+});
+const aiTrendQueries = {
+  count: 'sum(rate(ai_request_seconds_count{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[5m]))',
+  sum: 'sum(rate(ai_request_seconds_sum{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[5m]))',
 };
 
 // Prometheus 설정의 application 레이블로 비즈니스 서비스를 식별한다.
@@ -58,13 +69,14 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
   const [performance, setPerformance] = useState({ rps: { kind: 'loading' }, p95: { kind: 'loading' } });
   const [updated, setUpdated] = useState(null);
   const [metrics, setMetrics] = useState({});
+  const [domain, setDomain] = useState({});
   const [completed, setCompleted] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const scope = useRef({ sessionSignal, range, tab });
   const interrupted = useRef(false);
   const currentData = useRef(null);
-  currentData.current = { instant, history, performance, metrics };
+  currentData.current = { instant, history, performance, metrics, domain };
   const sessionChanged = scope.current.sessionSignal !== sessionSignal;
   const rangeChanged = scope.current.range !== range || scope.current.tab !== tab;
 
@@ -75,9 +87,10 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
     let failed = false;
     const sameSession = scope.current.sessionSignal === sessionSignal;
     const sameScope = sameSession && scope.current.range === range && scope.current.tab === tab;
-    const { instant: previousInstant, history: previousHistory, performance: previousPerformance, metrics: previousMetrics } = currentData.current;
+    const { instant: previousInstant, history: previousHistory, performance: previousPerformance, metrics: previousMetrics, domain: previousDomain } = currentData.current;
     const retained = sameSession && (previousInstant.kind === 'success' || Object.values(previousMetrics).some(item => item.kind === 'success')
-      || (sameScope && (previousHistory.kind === 'success' || previousPerformance.rps.kind === 'success' || previousPerformance.p95.kind === 'success')));
+      || (sameScope && (previousHistory.kind === 'success' || previousPerformance.rps.kind === 'success' || previousPerformance.p95.kind === 'success'
+        || Object.values(previousDomain).some(item => item.kind === 'success'))));
     scope.current = { sessionSignal, range, tab };
     if (!sameSession) interrupted.current = false;
     const onVisibility = () => {
@@ -91,6 +104,8 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
     setHistory(current => tab === 'overview' ? sameScope && current.kind === 'success' ? current : { kind: 'loading' } : { kind: 'idle' });
     setPerformance(current => Object.fromEntries(['rps', 'p95'].map(key => [key, tab === 'overview'
       ? sameScope && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' } : { kind: 'idle' }])));
+    setDomain(current => tab === 'domain' ? Object.fromEntries(['saga', 'late', 'aiCount', 'aiSum', 'trendCount', 'trendSum'].map(key => [key,
+      sameScope && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' }])) : {});
     setCompleted(null);
     setRefreshing(retained);
     setRefreshFailed(false);
@@ -121,6 +136,32 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
             .catch(() => { if (!controller.signal.aborted) { failed = true; setPerformance(current => ({ ...current, [key]: current[key]?.kind === 'success' ? current[key] : { kind: 'error' } })); } }));
         });
       }
+      if (tab === 'domain') {
+        const { aiCount, aiSum, ...sagaQueries } = domainQueries(`${ranges[range]}s`);
+        Object.entries(sagaQueries).forEach(([key, query]) => {
+          pending.push(queryInstant({ query, signal: controller.signal })
+            .then(data => { if (!controller.signal.aborted) setDomain(current => ({ ...current, [key]: { kind: 'success', data } })); })
+            .catch(() => { if (!controller.signal.aborted) { failed = true; setDomain(current => ({ ...current, [key]: current[key]?.kind === 'success' ? current[key] : { kind: 'error' } })); } }));
+        });
+        pending.push(Promise.all([
+          queryInstant({ query: aiCount, time: end, signal: controller.signal }),
+          queryInstant({ query: aiSum, time: end, signal: controller.signal }),
+        ]).then(([count, sum]) => { if (!controller.signal.aborted) setDomain(current => ({ ...current,
+          aiCount: { kind: 'success', data: count }, aiSum: { kind: 'success', data: sum } })); })
+          .catch(() => { if (!controller.signal.aborted) { failed = true; setDomain(current => ({ ...current,
+            aiCount: current.aiCount?.kind === 'success' && current.aiSum?.kind === 'success' ? current.aiCount : { kind: 'error' },
+            aiSum: current.aiCount?.kind === 'success' && current.aiSum?.kind === 'success' ? current.aiSum : { kind: 'error' },
+          })); } }));
+        pending.push(Promise.all([
+          queryRange({ query: aiTrendQueries.count, ...window, signal: controller.signal }),
+          queryRange({ query: aiTrendQueries.sum, ...window, signal: controller.signal }),
+        ]).then(([count, sum]) => { if (!controller.signal.aborted) setDomain(current => ({ ...current,
+          trendCount: { kind: 'success', data: count, window }, trendSum: { kind: 'success', data: sum, window } })); })
+          .catch(() => { if (!controller.signal.aborted) { failed = true; setDomain(current => ({ ...current,
+            trendCount: current.trendCount?.kind === 'success' && current.trendSum?.kind === 'success' ? current.trendCount : { kind: 'error' },
+            trendSum: current.trendCount?.kind === 'success' && current.trendSum?.kind === 'success' ? current.trendSum : { kind: 'error' },
+          })); } }));
+      }
       Promise.allSettled(pending).then(() => {
         inFlight = false;
         if (!controller.signal.aborted) {
@@ -136,6 +177,7 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
     history: sessionChanged || rangeChanged ? { kind: 'loading' } : history,
     performance: sessionChanged || rangeChanged ? { rps: { kind: 'loading' }, p95: { kind: 'loading' } } : performance,
     metrics: sessionChanged ? {} : metrics,
+    domain: sessionChanged || rangeChanged ? {} : domain,
     updated: sessionChanged ? null : updated,
     completed: sessionChanged ? null : completed,
     refreshing, refreshFailed, interrupted,
@@ -195,7 +237,6 @@ function Kpi({ label, value, unit, foot, icon, tone = '' }) {
 const unavailableAreas = {
   feign: ['OpenFeign 호출 시간', 'Circuit Breaker 상태', '호출 관계', 'Feign·Circuit Breaker의 메트릭 이름과 레이블이 아직 실측으로 확인되지 않았습니다.'],
   kafka: ['Consumer Group Lag', '이벤트 처리량', 'DLT 발행', 'Consumer 중단 중 Lag를 관측할 Exporter와 이벤트 계측이 아직 확인되지 않았습니다.'],
-  domain: ['도메인 이벤트 추이', '매치·AI 지표', 'Saga 결과', '도메인·AI 기간 메트릭은 미연동입니다. 아래 A28·A29 누적 통계를 확인하세요.'],
 };
 
 function UnlinkedArea({ tab }) {
@@ -211,6 +252,7 @@ function UnlinkedArea({ tab }) {
 
 function DetailData({ tab, history, selected }) {
   if (tab === 'jvm') return <p>JVM 지표는 A30 현재 값입니다. 시계열은 연결 후 이곳에 표시합니다.</p>;
+  if (tab === 'domain') return <p>선택 기간의 Saga·AI 집계와 AI 평균 응답시간 추이는 위 영역에 표시됩니다.</p>;
   if (tab !== 'overview') return <p>이 영역의 계측이 확인되지 않아 상세 데이터가 없습니다.</p>;
   if (history.kind === 'loading' || history.kind === 'idle') return <p role="status">시계열을 조회하는 중입니다.</p>;
   if (history.kind === 'error') return <p role="alert">시계열 조회에 실패했습니다.</p>;
@@ -239,7 +281,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
   const [tab, setTab] = useState('overview');
   const [revision, setRevision] = useState(0);
   const [auto, setAuto] = useState(true);
-  const { instant, history, performance, metrics, updated, completed, refreshing, refreshFailed, interrupted } = useUpMetrics(sessionSignal, range, revision, tab);
+  const { instant, history, performance, metrics, domain, updated, completed, refreshing, refreshFailed, interrupted } = useUpMetrics(sessionSignal, range, revision, tab);
   useEffect(() => {
     if (!auto || !completed || document.visibilityState !== 'visible' || sessionSignal?.aborted) return undefined;
     const timer = window.setTimeout(() => setRevision(value => value + 1), Math.max(0, 30000 - (Date.now() - completed.startedAt)));
@@ -311,7 +353,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
         <StatusDonut services={services} statuses={services.map(([id]) => allStatuses[id])} instantKind={instant.kind} />
         <P95Bars services={services} selected={selected} statuses={allStatuses} p95={metrics.p95} rps={metrics.rps} />
         <HttpStatusBars services={services} selected={selected} statuses={allStatuses} distribution={metrics.statusCodes} rps={metrics.rps} />
-        <ResourceGauges services={services} selected={selected} statuses={allStatuses} cpu={metrics.cpu} heap={metrics.heap} heapUsed={metrics.heapUsed} heapCommitted={metrics.heapCommitted} />
+        <ResourceGauges services={services} selected={selected} statuses={allStatuses} cpu={metrics.cpu} heap={metrics.heap} heapUsed={metrics.heapUsed} heapMax={metrics.heapMax} />
       </div></section>
       <section className="section" aria-labelledby="msa-services-title"><div className="section-heading"><div><p className="section-kicker">01 / LIVE OVERVIEW</p><h2 id="msa-services-title">서비스별 상태</h2><p className="section-desc">UP·DOWN·미수집을 분리하고, 선택한 서비스를 강조합니다.</p></div><span className="section-aside">5개 비즈니스 서비스</span></div>
         <div className="panel"><div className="panel-head"><div><h3 className="panel-title">서비스 운영 현황</h3><p className="panel-sub">상태는 Prometheus up, 성능은 HTTP 계측으로 확인합니다.</p></div><span className="tiny-tag">A30</span></div>
@@ -327,8 +369,8 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
             <PerformanceChart metric="p95" request={performance.p95} rpsRequest={performance.rps} services={services} selected={selected} />
           </div>
           <StatusHeatmap services={services} history={history} window={history.window} />
-        </> : tab === 'jvm' ? <JvmArea metrics={metrics} selected={selected} /> : <UnlinkedArea tab={tab} />}</div>
-        <details className="details"><summary>상세 데이터 보기 <span className="tiny-tag">A31</span></summary><div className="details-body"><p>선택한 영역의 실제 시계열 응답입니다.</p><DetailData tab={tab} history={history} selected={selected} /></div></details>
+        </> : tab === 'jvm' ? <JvmArea metrics={metrics} selected={selected} /> : tab === 'domain' ? <DomainMetrics data={domain} rangeLabel={rangeLabels[range]} /> : <UnlinkedArea tab={tab} />}</div>
+        <details className="details"><summary>상세 데이터 보기 <span className="tiny-tag">A31</span></summary><div className="details-body">{tab === 'overview' && <p>선택한 영역의 실제 시계열 응답입니다.</p>}<DetailData tab={tab} history={history} selected={selected} /></div></details>
       </section>
     </div>
   </>;
