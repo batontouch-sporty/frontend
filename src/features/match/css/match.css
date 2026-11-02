@@ -39,7 +39,9 @@
 .match-form input:disabled, .match-form textarea:disabled, .match-form select:disabled { background: var(--canvas); color: var(--muted); cursor: not-allowed; }
 .match-form select:not(.sporty-district-select) { appearance: none; padding-right: 36px; background-image: url("../../auth/assets/chevron.svg"); background-repeat: no-repeat; background-position: right 12px center; background-size: 10px auto; }
 /* 포커스된 입력칸만 같은 방식으로 강조해, 브라우저 기본 검은 테두리가 칸마다 다르게 보이지 않게 한다. */
-.match-form input:focus-visible, .match-form textarea:focus-visible, .match-form select:focus-visible { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(17, 24, 32, .12); }
+/* 실제 outline을 그려 키보드·강제 색상 모드(Windows 고대비)에서도 포커스가 보이게 한다. 지역 선택기(.match-region)는 우선순위가 높아 따로 적는다. */
+.match-form input:focus-visible, .match-form textarea:focus-visible, .match-form select:focus-visible,
+.match-form select.sporty-district-select.match-region:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-color: var(--ink); }
 .match-form input::placeholder, .match-form textarea::placeholder { color: var(--muted); }
 .match-form textarea { display: block; resize: vertical; min-height: 150px; }
 
@@ -75,7 +77,9 @@
 .match-form .match-stepper input { flex: 0 0 auto; width: 3.5ch; min-width: 0; min-height: 0; padding: 0; border: 0; box-shadow: none; text-align: right; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; appearance: textfield; }
 .match-stepper input::-webkit-inner-spin-button { appearance: none; }
 .match-stepper-value > span { color: var(--muted); font-size: 13px; }
-.match-stepper:focus-within { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(17, 24, 32, .12); }
+/* 스테퍼는 숫자칸 대신 바깥 상자에 윤곽선을 그린다. +/− 버튼은 자체 포커스 윤곽선을 쓴다. */
+.match-form .match-stepper input:focus-visible { outline: none; }
+.match-stepper:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; border-color: var(--ink); }
 
 .match-level-control { margin-top: 16px; }
 .match-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: var(--radius-button); background: var(--canvas); }
