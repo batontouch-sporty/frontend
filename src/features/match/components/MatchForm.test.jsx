@@ -32,6 +32,11 @@ test('rejects invalid inputs and accepts matches ending the next day', () => {
   expect(validateMatch(initialMatchValues({ ...match, endAt: '2026-09-27T01:00' }))).toEqual({});
 });
 
+test('requires at least two participants including the owner', () => {
+  expect(validateMatch(initialMatchValues({ ...match, maxParticipant: 1 })).maxParticipant).toContain('2명');
+  expect(validateMatch(initialMatchValues({ ...match, maxParticipant: 2 })).maxParticipant).toBeUndefined();
+});
+
 test('offers three skill levels with their meaning and submits the selection', async () => {
   const submit = jest.fn().mockResolvedValue(undefined);
   render(<MatchForm initialValues={match} selectedFacility={facility} onSubmit={submit} />);
