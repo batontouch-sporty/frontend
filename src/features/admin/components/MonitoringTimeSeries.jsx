@@ -29,18 +29,29 @@ export function buildPerformanceSeries(request, rpsRequest, services, selected, 
   const traffic = rpsRequest?.kind === 'success' ? samplesByService(rpsRequest.data, ids, window) : null;
   return Array.from({ length: Math.floor((window.end - window.start) / window.step) + 1 }, (_, index) => {
     const time = window.start + index * window.step;
-    const entries = ids.map(id => maps[id].get(index));
+    const trafficEntries = traffic ? ids.map(id => traffic[id].get(index)) : [];
+    const eligibleIds = metric === 'p95' && traffic ? ids.filter((_, position) => trafficEntries[position]?.value !== 0) : ids;
+    const entries = eligibleIds.map(id => maps[id].get(index));
     const values = entries.map(item => item?.value).filter(value => value !== null && value !== undefined && value >= 0);
     const invalid = entries.some(item => item && (item.value === null || item.value < 0));
-    const trafficEntries = traffic ? ids.map(id => traffic[id].get(index)) : [];
     const noRequests = metric === 'p95' && trafficEntries.length > 0
       && trafficEntries.every(item => item?.value === 0);
     const value = values.length ? metric === 'rps'
       ? values.reduce((sum, current) => sum + current, 0)
       : Math.max(...values) * 1000 : null;
     const coverage = values.length;
-    const state = value !== null ? (metric === 'p95' && noRequests ? '요청 없음' : coverage < ids.length ? `부분 집계 ${coverage}/${ids.length}` : metric === 'rps' && value === 0 ? '요청 없음' : null)
-      : noRequests ? '요청 없음' : invalid ? '비유한 값' : '미수집';
+    const unknownTraffic = metric === 'p95' && (!traffic || trafficEntries.some(item => item?.value == null || item.value < 0));
+    const unknownObserved = metric === 'p95' && traffic ? ids.filter((id, position) => {
+      const sample = maps[id].get(index)?.value;
+      return trafficEntries[position]?.value == null && sample !== null && sample !== undefined && sample >= 0;
+    }).length : 0;
+    const expected = metric === 'p95' ? trafficEntries.filter(item => item?.value > 0).length + unknownObserved : ids.length;
+    const partial = coverage < expected && (metric === 'p95' || value !== null);
+    const state = noRequests ? '요청 없음'
+      : partial ? `부분 집계 ${coverage}/${expected}${value === null && invalid ? ' · 비유한 값' : ''}`
+        : unknownTraffic ? 'RPS 미수집'
+          : value === null ? invalid ? '비유한 값' : '미수집'
+            : metric === 'rps' && value === 0 ? '요청 없음' : null;
     return { time, value: noRequests && metric === 'p95' ? null : value, state, coverage };
   });
 }

@@ -226,6 +226,20 @@ test('세션 중단 시 진행 중인 조회를 취소하고 늦은 결과를 �
   expect(queryInstant.mock.calls[0][0].signal.aborted).toBe(true);
 });
 
+test('세션 신호가 바뀌면 이전 계정의 수집 데이터를 즉시 숨긴다', async () => {
+  const first = new AbortController();
+  const next = new AbortController();
+  queryInstant.mockImplementation(({ query }) => Promise.resolve(query === 'up' ? [up('user-service', 1)] : []));
+  const view = render(<MsaMonitoringDashboard sessionSignal={first.signal} />);
+  await waitFor(() => expect(within(screen.getByRole('region', { name: '운영 요약' })).getByText('1 / 5')).toBeInTheDocument());
+  const oldSignal = queryInstant.mock.calls[0][0].signal;
+  queryInstant.mockImplementation(() => new Promise(() => {}));
+  view.rerender(<MsaMonitoringDashboard sessionSignal={next.signal} />);
+  expect(screen.queryByText('1 / 5')).not.toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: '운영 요약' })).getAllByText('조회 중').length).toBeGreaterThan(0);
+  expect(oldSignal.aborted).toBe(true);
+});
+
 test('도넛·KPI·상태표가 5개 서비스를 같은 기준으로 분류하고 선택 필터에도 전체 도넛을 유지한다', async () => {
   queryInstant.mockImplementation(({ query }) => Promise.resolve(query === 'up' ? [
     up('user-service', 1), up('match-service', 0), up('facility-service', 0), up('facility-service', 1),
@@ -409,12 +423,78 @@ test('Committed 조회 오류와 서비스 미수집은 Heap 사용량을 0으�
 
 const settle = async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); };
 
+test('첫 조회는 Loading이고 수동 재조회 중 차트·툴팁·초점을 유지한다', async () => {
+  let resolveRefresh;
+  let rpsCalls = 0;
+  queryInstant.mockImplementation(({ query }) => Promise.resolve(query === 'up' ? [up('user-service', 1)] : []));
+  queryRange.mockImplementation(({ query, end }) => {
+    if (!query.includes('http_server_requests_seconds_count')) return Promise.resolve([]);
+    rpsCalls += 1;
+    return rpsCalls === 1 ? Promise.resolve([{ metric: { application: 'user-service' }, values: [[end, '1']] }])
+      : new Promise(resolve => { resolveRefresh = resolve; });
+  });
+  render(<MsaMonitoringDashboard />);
+  const chart = screen.getByRole('article', { name: '요청량 RPS 추이' });
+  expect(within(chart).getByText('시계열 조회 중')).toBeInTheDocument();
+  await waitFor(() => expect(within(chart).getByText('1.00 RPS')).toBeInTheDocument());
+  const point = chart.querySelector('circle[tabindex="0"]');
+  fireEvent.focus(point);
+  expect(within(chart).getByRole('tooltip')).toHaveTextContent('1.00 RPS');
+  fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
+  expect(chart.querySelector('.msa-time-latest')).toHaveTextContent('1.00 RPS');
+  expect(within(chart).getByRole('tooltip')).toHaveTextContent('1.00 RPS');
+  expect(chart.querySelector('circle[tabindex="0"]')).toBe(point);
+  expect(screen.getByText(/갱신 중 \(기존 측정값 유지\)/)).toBeInTheDocument();
+  await act(async () => resolveRefresh([{ metric: { application: 'user-service' }, values: [[queryRange.mock.calls[4][0].end, '2']] }]));
+  await waitFor(() => expect(chart.querySelector('.msa-time-latest')).toHaveTextContent('2.00 RPS'));
+});
+
+test('재조회 실패는 이전 시계열과 갱신 실패 안내를 함께 표시한다', async () => {
+  let rpsCalls = 0;
+  queryRange.mockImplementation(({ query, end }) => {
+    if (!query.includes('http_server_requests_seconds_count')) return Promise.resolve([]);
+    rpsCalls += 1;
+    return rpsCalls === 1 ? Promise.resolve([{ metric: { application: 'user-service' }, values: [[end, '1']] }])
+      : Promise.reject(new Error('offline'));
+  });
+  render(<MsaMonitoringDashboard />);
+  const chart = screen.getByRole('article', { name: '요청량 RPS 추이' });
+  await waitFor(() => expect(within(chart).getByText('1.00 RPS')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
+  await waitFor(() => expect(screen.getByText(/갱신 실패 \(이전 측정값 표시 중\)/)).toBeInTheDocument());
+  expect(within(chart).getByText('1.00 RPS')).toBeInTheDocument();
+});
+
+test('조회 기간이 바뀌면 이전 범위 차트를 숨기고 새 A31 응답을 기다린다', async () => {
+  let pending = false;
+  queryRange.mockImplementation(({ query, end }) => pending ? new Promise(() => {})
+    : Promise.resolve(query.includes('http_server_requests_seconds_count')
+      ? [{ metric: { application: 'user-service' }, values: [[end, '1']] }] : []));
+  render(<MsaMonitoringDashboard />);
+  const chart = screen.getByRole('article', { name: '요청량 RPS 추이' });
+  await waitFor(() => expect(within(chart).getByText('1.00 RPS')).toBeInTheDocument());
+  pending = true;
+  fireEvent.change(screen.getByLabelText('조회 시간'), { target: { value: '1h' } });
+  expect(within(chart).getByText('시계열 조회 중')).toBeInTheDocument();
+  expect(within(chart).queryByText('1.00 RPS')).not.toBeInTheDocument();
+});
+
 test('30초 Polling은 현재 시각으로 범위를 밀고 OFF·수동 갱신·언마운트를 따른다', async () => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-11-01T05:00:00Z'));
+  let resolveSecond;
+  let rpsCalls = 0;
+  queryRange.mockImplementation(({ query, end }) => {
+    if (!query.includes('http_server_requests_seconds_count')) return Promise.resolve([]);
+    rpsCalls += 1;
+    return rpsCalls === 2 ? new Promise(resolve => { resolveSecond = resolve; })
+      : Promise.resolve([{ metric: { application: 'user-service' }, values: [[end, String(rpsCalls)]] }]);
+  });
   try {
     const view = render(<MsaMonitoringDashboard />);
     await act(settle);
+    const chart = screen.getByRole('article', { name: '요청량 RPS 추이' });
+    expect(within(chart).getByText('1.00 RPS')).toBeInTheDocument();
     expect(queryInstant).toHaveBeenCalledTimes(9);
     expect(queryRange).toHaveBeenCalledTimes(3);
     const first = queryRange.mock.calls[0][0];
@@ -422,6 +502,9 @@ test('30초 Polling은 현재 시각으로 범위를 밀고 OFF·수동 갱신·
     await act(async () => { jest.advanceTimersByTime(30000); await settle(); });
     expect(queryRange).toHaveBeenCalledTimes(6);
     expect(queryRange.mock.calls[3][0]).toEqual(expect.objectContaining({ start: first.start + 30, end: first.end + 30, step: 30 }));
+    expect(within(chart).getByText('1.00 RPS')).toBeInTheDocument();
+    expect(screen.getByText(/갱신 중 \(기존 측정값 유지\)/)).toBeInTheDocument();
+    await act(async () => { resolveSecond([{ metric: { application: 'user-service' }, values: [[queryRange.mock.calls[4][0].end, '2']] }]); await settle(); });
     fireEvent.click(screen.getByRole('button', { name: '자동 갱신 ON' }));
     await act(async () => { jest.advanceTimersByTime(60000); await settle(); });
     expect(queryRange).toHaveBeenCalledTimes(6);
@@ -458,24 +541,63 @@ test('숨김 탭은 Polling을 멈추고 다시 보이면 새 범위를 조회�
   }
 });
 
-test('서비스 변경은 이전 A30·A31을 취소하고 늦은 시계열 응답을 무효화한다', async () => {
+test('자동 갱신 OFF는 숨김으로 중단된 수동 요청만 복귀 시 재시도한다', async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-01T05:00:00Z'));
+  const descriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+  let visible = true;
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visible ? 'visible' : 'hidden' });
+  let rangeCalls = 0;
+  queryRange.mockImplementation(() => {
+    rangeCalls += 1;
+    return rangeCalls === 4 ? new Promise(() => {}) : Promise.resolve([]);
+  });
+  try {
+    render(<MsaMonitoringDashboard />);
+    await act(settle);
+    fireEvent.click(screen.getByRole('button', { name: '자동 갱신 ON' }));
+    fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
+    const interruptedSignal = queryRange.mock.calls[3][0].signal;
+    visible = false;
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(interruptedSignal.aborted).toBe(true);
+    visible = true;
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    await act(settle);
+    expect(queryRange).toHaveBeenCalledTimes(9);
+    visible = false;
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    visible = true;
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    await act(async () => { jest.advanceTimersByTime(60000); await settle(); });
+    expect(queryRange).toHaveBeenCalledTimes(9);
+  } finally {
+    if (descriptor) Object.defineProperty(document, 'visibilityState', descriptor);
+    jest.useRealTimers();
+  }
+});
+
+test('서비스 선택은 진행 중인 공통 조회를 유지하고 응답만 화면에서 필터링한다', async () => {
   let resolveOld;
-  let rpsCalls = 0;
   queryRange.mockImplementation(({ query, end }) => {
     if (query.includes('http_server_requests_seconds_count') && !query.includes('bucket')) {
-      rpsCalls += 1;
-      if (rpsCalls === 1) return new Promise(resolve => { resolveOld = resolve; });
-      return Promise.resolve([{ metric: { application: 'user-service' }, values: [[end, '2']] }]);
+      return new Promise(resolve => { resolveOld = resolve; });
     }
     return Promise.resolve([]);
   });
   render(<MsaMonitoringDashboard />);
   const oldSignal = queryRange.mock.calls[1][0].signal;
+  const instantCalls = queryInstant.mock.calls.length;
+  const rangeCalls = queryRange.mock.calls.length;
   fireEvent.change(screen.getByLabelText('서비스'), { target: { value: 'user-service' } });
-  expect(oldSignal.aborted).toBe(true);
+  expect(oldSignal.aborted).toBe(false);
+  expect(queryInstant).toHaveBeenCalledTimes(instantCalls);
+  expect(queryRange).toHaveBeenCalledTimes(rangeCalls);
   const chart = screen.getByRole('article', { name: '요청량 RPS 추이' });
-  await waitFor(() => expect(within(chart).getByText('2.00 RPS')).toBeInTheDocument());
-  await act(async () => resolveOld([{ metric: { application: 'user-service' }, values: [[queryRange.mock.calls[1][0].end, '99']] }]));
+  await act(async () => resolveOld([
+    { metric: { application: 'user-service' }, values: [[queryRange.mock.calls[1][0].end, '2']] },
+    { metric: { application: 'match-service' }, values: [[queryRange.mock.calls[1][0].end, '99']] },
+  ]));
   expect(within(chart).getByText('2.00 RPS')).toBeInTheDocument();
   expect(within(chart).queryByText('99.00 RPS')).not.toBeInTheDocument();
 });

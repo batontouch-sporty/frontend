@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { queryInstant, queryRange } from '../api/adminApi';
 import { classifyUp, finiteSample, StatusDonut, P95Bars, HttpStatusBars, ResourceGauges, StatusHeatmap } from './MonitoringVisualizations';
 import { PerformanceChart } from './MonitoringTimeSeries';
@@ -52,58 +52,94 @@ export function statusFromUp(result, serviceId) {
   return classifyUp(samples);
 }
 
-function useUpMetrics(sessionSignal, range, revision, selected, tab) {
+function useUpMetrics(sessionSignal, range, revision, tab) {
   const [instant, setInstant] = useState({ kind: 'loading' });
   const [history, setHistory] = useState({ kind: 'loading' });
   const [performance, setPerformance] = useState({ rps: { kind: 'loading' }, p95: { kind: 'loading' } });
   const [updated, setUpdated] = useState(null);
   const [metrics, setMetrics] = useState({});
   const [completed, setCompleted] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const scope = useRef({ sessionSignal, range, tab });
+  const interrupted = useRef(false);
+  const currentData = useRef(null);
+  currentData.current = { instant, history, performance, metrics };
+  const sessionChanged = scope.current.sessionSignal !== sessionSignal;
+  const rangeChanged = scope.current.range !== range || scope.current.tab !== tab;
 
   useEffect(() => {
     const controller = new AbortController();
     const abort = () => controller.abort();
-    const onVisibility = () => { if (document.visibilityState === 'hidden') abort(); };
+    let inFlight = false;
+    let failed = false;
+    const sameSession = scope.current.sessionSignal === sessionSignal;
+    const sameScope = sameSession && scope.current.range === range && scope.current.tab === tab;
+    const { instant: previousInstant, history: previousHistory, performance: previousPerformance, metrics: previousMetrics } = currentData.current;
+    const retained = sameSession && (previousInstant.kind === 'success' || Object.values(previousMetrics).some(item => item.kind === 'success')
+      || (sameScope && (previousHistory.kind === 'success' || previousPerformance.rps.kind === 'success' || previousPerformance.p95.kind === 'success')));
+    scope.current = { sessionSignal, range, tab };
+    if (!sameSession) interrupted.current = false;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden' && inFlight) { interrupted.current = true; abort(); }
+    };
     sessionSignal?.addEventListener('abort', abort);
     document.addEventListener('visibilitychange', onVisibility);
     if (sessionSignal?.aborted) abort();
     const startedAt = Date.now();
-    setInstant({ kind: 'loading' });
-    setHistory(tab === 'overview' ? { kind: 'loading' } : { kind: 'idle' });
-    setPerformance({ rps: { kind: tab === 'overview' ? 'loading' : 'idle' }, p95: { kind: tab === 'overview' ? 'loading' : 'idle' } });
+    setInstant(current => sameSession && current.kind === 'success' ? current : { kind: 'loading' });
+    setHistory(current => tab === 'overview' ? sameScope && current.kind === 'success' ? current : { kind: 'loading' } : { kind: 'idle' });
+    setPerformance(current => Object.fromEntries(['rps', 'p95'].map(key => [key, tab === 'overview'
+      ? sameScope && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' } : { kind: 'idle' }])));
     setCompleted(null);
+    setRefreshing(retained);
+    setRefreshFailed(false);
+    if (!sameSession) setUpdated(null);
     const instantQueries = Object.entries(metricQueries).filter(([key]) => tab === 'jvm' || !['gc', 'threads'].includes(key));
-    setMetrics(Object.fromEntries(instantQueries.map(([key]) => [key, { kind: 'loading' }])));
+    setMetrics(current => Object.fromEntries(instantQueries.map(([key]) => [key,
+      sameSession && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' }])));
     const end = Math.floor(startedAt / 1000);
     const window = { start: end - ranges[range], end, step: steps[range] };
     const pending = [];
     if (!controller.signal.aborted && document.visibilityState === 'visible') {
+      inFlight = true;
       pending.push(queryInstant({ query: 'up', signal: controller.signal })
         .then(data => { if (!controller.signal.aborted) setInstant({ kind: 'success', data }); })
-        .catch(() => { if (!controller.signal.aborted) setInstant({ kind: 'error' }); }));
+        .catch(() => { if (!controller.signal.aborted) { failed = true; setInstant(current => current.kind === 'success' ? current : { kind: 'error' }); } }));
       instantQueries.forEach(([key, query]) => {
         pending.push(queryInstant({ query, signal: controller.signal })
           .then(data => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'success', data } })); })
-          .catch(() => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'error' } })); }));
+          .catch(() => { if (!controller.signal.aborted) { failed = true; setMetrics(current => ({ ...current, [key]: current[key]?.kind === 'success' ? current[key] : { kind: 'error' } })); } }));
       });
       if (tab === 'overview') {
         pending.push(queryRange({ query: 'up', ...window, signal: controller.signal })
           .then(data => { if (!controller.signal.aborted) setHistory({ kind: 'success', data, window }); })
-          .catch(() => { if (!controller.signal.aborted) setHistory({ kind: 'error' }); }));
+          .catch(() => { if (!controller.signal.aborted) { failed = true; setHistory(current => current.kind === 'success' ? current : { kind: 'error' }); } }));
         ['rps', 'p95'].forEach(key => {
           pending.push(queryRange({ query: metricQueries[key], ...window, signal: controller.signal })
             .then(data => { if (!controller.signal.aborted) setPerformance(current => ({ ...current, [key]: { kind: 'success', data, window } })); })
-            .catch(() => { if (!controller.signal.aborted) setPerformance(current => ({ ...current, [key]: { kind: 'error' } })); }));
+            .catch(() => { if (!controller.signal.aborted) { failed = true; setPerformance(current => ({ ...current, [key]: current[key]?.kind === 'success' ? current[key] : { kind: 'error' } })); } }));
         });
       }
       Promise.allSettled(pending).then(() => {
-        if (!controller.signal.aborted) { setUpdated(new Date()); setCompleted({ startedAt }); }
+        inFlight = false;
+        if (!controller.signal.aborted) {
+          setUpdated(new Date()); setCompleted({ startedAt }); setRefreshing(false); setRefreshFailed(failed && retained);
+        }
       });
     }
     return () => { sessionSignal?.removeEventListener('abort', abort); document.removeEventListener('visibilitychange', onVisibility); controller.abort(); };
-  }, [sessionSignal, range, revision, selected, tab]);
+  }, [sessionSignal, range, revision, tab]);
 
-  return { instant, history, performance, metrics, updated, completed };
+  return {
+    instant: sessionChanged ? { kind: 'loading' } : instant,
+    history: sessionChanged || rangeChanged ? { kind: 'loading' } : history,
+    performance: sessionChanged || rangeChanged ? { rps: { kind: 'loading' }, p95: { kind: 'loading' } } : performance,
+    metrics: sessionChanged ? {} : metrics,
+    updated: sessionChanged ? null : updated,
+    completed: sessionChanged ? null : completed,
+    refreshing, refreshFailed, interrupted,
+  };
 }
 
 function metricValue(request, serviceId) {
@@ -203,7 +239,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
   const [tab, setTab] = useState('overview');
   const [revision, setRevision] = useState(0);
   const [auto, setAuto] = useState(true);
-  const { instant, history, performance, metrics, updated, completed } = useUpMetrics(sessionSignal, range, revision, selected, tab);
+  const { instant, history, performance, metrics, updated, completed, refreshing, refreshFailed, interrupted } = useUpMetrics(sessionSignal, range, revision, tab);
   useEffect(() => {
     if (!auto || !completed || document.visibilityState !== 'visible' || sessionSignal?.aborted) return undefined;
     const timer = window.setTimeout(() => setRevision(value => value + 1), Math.max(0, 30000 - (Date.now() - completed.startedAt)));
@@ -214,10 +250,15 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
     return () => { cancel(); sessionSignal?.removeEventListener('abort', cancel); document.removeEventListener('visibilitychange', onVisibility); };
   }, [auto, completed, sessionSignal]);
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible' && auto && !sessionSignal?.aborted) setRevision(value => value + 1); };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !sessionSignal?.aborted && (auto || interrupted.current)) {
+        interrupted.current = false;
+        setRevision(value => value + 1);
+      }
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [auto, sessionSignal]);
+  }, [auto, sessionSignal, interrupted]);
   const shown = services.filter(([id]) => selected === 'all' || selected === id);
   const statuses = shown.map(([id]) => instant.kind === 'success' ? statusFromUp(instant.data, id) : instant.kind);
   const activeServices = shown.filter((_, index) => ['up', 'partial'].includes(statuses[index])).map(([id]) => id);
@@ -255,7 +296,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
           <div className="field"><label htmlFor="msa-service">서비스</label><select id="msa-service" value={selected} onChange={event => setSelected(event.target.value)}><option value="all">전체 서비스</option>{services.map(([id]) => <option key={id} value={id}>{id}</option>)}</select></div>
           <button type="button" className="btn btn-lime" onClick={() => setRevision(value => value + 1)}><span aria-hidden="true">↻</span> 새로고침</button>
           <button type="button" className="btn msa-auto-toggle" aria-pressed={auto} onClick={() => setAuto(value => !value)}>자동 갱신 {auto ? 'ON' : 'OFF'}</button></div>
-          <div className="updated" aria-live="polite">30초 주기 조회 · 마지막 완료 {updated ? timeFormatter.format(updated) : '—'} KST</div></div>
+          <div className="updated" aria-live="polite">30초 주기 조회 · 마지막 완료 {updated ? timeFormatter.format(updated) : '—'} KST{refreshing && <span> · 갱신 중 (기존 측정값 유지)</span>}{refreshFailed && <span> · 갱신 실패 (이전 측정값 표시 중)</span>}</div></div>
       </div>
     </div></div>
     <div className="admin-dashboard-inner msa-content">

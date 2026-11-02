@@ -29,13 +29,28 @@ test('P95는 서비스별 최대 초 값을 ms로 바꾸고 요청 없음·비�
     ['user-service', [[100, '2'], [130, '1'], [160, '0']]],
     ['match-service', [[100, '3'], [130, '1'], [160, '0']]],
   ]);
-  const all = buildPerformanceSeries(p95, rps, services, 'all', 'p95');
-  expect(all[0]).toMatchObject({ value: 400, state: '부분 집계 2/5' });
-  expect(all[1]).toMatchObject({ value: null, state: '비유한 값' });
-  expect(all[2]).toMatchObject({ value: 200, state: '부분 집계 1/5' });
+  const all = buildPerformanceSeries(p95, rps, services.slice(0, 2), 'all', 'p95');
+  expect(all[0]).toMatchObject({ value: 400, state: null });
+  expect(all[1]).toMatchObject({ value: null, state: '부분 집계 0/2 · 비유한 값' });
+  expect(all[2]).toMatchObject({ value: null, state: '요청 없음' });
   const selected = buildPerformanceSeries(p95, rps, services, 'user-service', 'p95');
   expect(selected[2]).toMatchObject({ value: null, state: '요청 없음' });
-  expect(selected[3]).toMatchObject({ value: null, state: '미수집' });
+  expect(selected[3]).toMatchObject({ value: null, state: 'RPS 미수집' });
+});
+
+test('P95 부분 집계는 요청 있는 서비스만 분모로 삼고 RPS 미수집은 요청 없음으로 추정하지 않는다', () => {
+  const p95 = request([
+    ['user-service', [[100, '0.2'], [130, '0.3'], [160, '0.4']]],
+    ['match-service', [[100, 'NaN'], [130, 'NaN'], [160, 'NaN']]],
+  ]);
+  const rps = request([
+    ['user-service', [[100, '2'], [130, '2'], [160, '2']]],
+    ['match-service', [[100, '0'], [130, '1']]],
+  ]);
+  const points = buildPerformanceSeries(p95, rps, services.slice(0, 2), 'all', 'p95');
+  expect(points[0]).toMatchObject({ value: 200, state: null, coverage: 1 });
+  expect(points[1]).toMatchObject({ value: 300, state: '부분 집계 1/2', coverage: 1 });
+  expect(points[2]).toMatchObject({ value: 400, state: 'RPS 미수집', coverage: 1 });
 });
 
 test('RPS 차트는 누락 구간을 선으로 잇지 않고 초점에서 실제 시각과 값을 보여준다', () => {
