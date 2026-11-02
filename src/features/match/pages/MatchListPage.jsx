@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import Footer from '../../../components/layout/Footer';
 import Header from '../../../components/layout/Header';
 import MatchRow from '../../main/components/MatchRow';
@@ -25,6 +25,9 @@ export function MatchListView({
 }) {
   const join = onJoin && (match => onJoin(match.id));
   const [allRecommendations, setAllRecommendations] = useState(false);
+  // 로그인 후 필터(?sportType=FUTSAL 등)를 유지하도록 onJoin처럼 현재 주소를 넘긴다.
+  const location = useLocation();
+  const from = location.pathname + location.search;
   const profileHeading = profile?.nickname || { loading: '프로필 불러오는 중', error: '프로필을 불러오지 못했어요', unauthorized: '다시 로그인해 주세요' }[profileStatus] || '로그인 후 확인해 주세요';
 
   return <div className="ms-page ml-page">
@@ -49,7 +52,7 @@ export function MatchListView({
               {/* 추천은 최대 3개라 2개 이상일 때만 정렬을 보여준다. */}
               {recommendationStatus === 'success' && recommendations.length > 1 && <label>정렬 <select aria-label="추천 매치 정렬" value={recommendationSort} disabled={!onRecommendationSort} onChange={event => onRecommendationSort?.(event.target.value)}><option value="default">추천순</option><option value="startAt">시간순</option></select></label>}
             </div>
-            {recommendationStatus === 'login' ? <div className="ms-board-message">로그인하면 내 선호 종목·활동 권역에 맞는 매치를 추천해 드려요.<Link className="ml-board-action" to="/login?redirect=%2Fmatches%2Fsearch">로그인하기</Link></div>
+            {recommendationStatus === 'login' ? <div className="ms-board-message">로그인하면 내 선호 종목·활동 권역에 맞는 매치를 추천해 드려요.<Link className="ml-board-action" to={`/login?redirect=${encodeURIComponent(from)}`} state={{ from }}>로그인하기</Link></div>
               : recommendationStatus === 'loading' ? <div className="ml-board-skeleton" role="status" aria-label="추천 매치를 찾고 있어요.">
                 <span className="ml-visually-hidden">추천 매치를 찾고 있어요.</span>
                 {[0, 1, 2].map(index => <div key={index} className="ml-skeleton-row" aria-hidden="true" />)}

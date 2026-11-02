@@ -22,7 +22,8 @@ export default function useMatchList() {
   const [matches, setMatches] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [status, setStatus] = useState('loading');
-  const [recommendationStatus, setRecommendationStatus] = useState('idle');
+  // 첫 렌더부터 로그인 여부로 상태를 정해 비로그인 사용자에게 '추천할 매치가 없어요'가 스치지 않게 한다.
+  const [recommendationStatus, setRecommendationStatus] = useState(() => localStorage.getItem('at') ? 'loading' : 'login');
   const [listError, setListError] = useState('');
   const [recommendationError, setRecommendationError] = useState('');
   const [recommendationFallback, setRecommendationFallback] = useState(false);
@@ -98,10 +99,9 @@ export default function useMatchList() {
     recommendationRequest.current = request;
     if (!quiet) { setRecommendationStatus('loading'); setRecommendationError(''); }
     try {
-      const result = await fetchRecommendedMatches(request.signal);
+      const { matches: rows, fallback } = await fetchRecommendedMatches(request.signal);
       if (request.signal.aborted) return;
-      const rows = Array.isArray(result) ? result : result?.matches || [];
-      setRecommendations(rows); setRecommendationFallback(result?.fallback === true);
+      setRecommendations(rows); setRecommendationFallback(fallback);
       setRecommendationStatus('success'); setRecommendationError('');
     } catch (error) {
       if (request.signal.aborted) return;

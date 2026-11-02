@@ -2,8 +2,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MatchListView as MatchListPage } from './MatchListPage';
 
-function renderPage(props = {}) {
-  return render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><MatchListPage {...props} /></MemoryRouter>);
+function renderPage(props = {}, path = '/matches/search') {
+  return render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><MatchListPage {...props} /></MemoryRouter>);
 }
 
 test('sports apply directly and region and fee controls are enabled', () => {
@@ -139,6 +139,12 @@ test('logged-out visitors get a login link instead of an empty recommendation bo
   expect(within(board).getByRole('link', { name: '로그인하기' })).toHaveAttribute('href', '/login?redirect=%2Fmatches%2Fsearch');
   expect(within(board).queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument();
   expect(within(board).queryByRole('combobox', { name: '추천 매치 정렬' })).not.toBeInTheDocument();
+});
+
+test('the login link keeps the current filters in the redirect address', () => {
+  renderPage({ recommendationStatus: 'login' }, '/matches/search?sportType=FUTSAL');
+  const board = screen.getByRole('region', { name: '회원 맞춤 추천 매치' });
+  expect(within(board).getByRole('link', { name: '로그인하기' })).toHaveAttribute('href', '/login?redirect=%2Fmatches%2Fsearch%3FsportType%3DFUTSAL');
 });
 
 test('recommendation retry is shown only for errors that can recover', () => {
