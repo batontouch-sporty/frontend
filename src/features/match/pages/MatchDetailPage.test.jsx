@@ -76,7 +76,7 @@ test('puts time, remaining seats and participants before the long sections', asy
   expect(screen.getByText('23:00')).toBeInTheDocument();
   expect(screen.getByText('1자리 남음')).toBeInTheDocument();
   expect(screen.getByRole('progressbar')).toHaveClass('is-last');
-  const sections = screen.getAllByRole('region').map(section => section.getAttribute('aria-labelledby'));
+  const sections = screen.getAllByRole('region').map(section => section.getAttribute('aria-labelledby')).filter(Boolean);
   expect(sections).toEqual(['detail-participants-title', 'detail-summary-title', 'detail-description-title', 'detail-guide-title']);
 });
 
@@ -562,4 +562,14 @@ test('shows the pre-join guide and links the breadcrumb to the match list', asyn
   expect(await screen.findByRole('heading', { name: '참여 전 확인해 주세요' })).toBeInTheDocument();
   const trail = screen.getByRole('navigation', { name: '현재 위치' });
   expect(within(trail).getByRole('link', { name: '매치 찾기' })).toHaveAttribute('href', '/matches/search');
+});
+
+
+test('offers waitlist registration on the routed full future match detail', async () => {
+  getMatchDetail.mockResolvedValue({ ...match, status: 'CLOSED', currentParticipantCount: 10,
+    startAt: '2099-01-01T19:00:00' });
+  showPage();
+  expect(await screen.findByRole('button', { name: '대기 신청하기' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '대기 취소하기' })).toBeEnabled();
+  expect(screen.getByRole('region', { name: '참가 대기' })).toBeInTheDocument();
 });

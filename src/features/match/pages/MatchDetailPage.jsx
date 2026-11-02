@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getMatchDetail, joinMatch, leaveMatch, deleteMatch } from '../api/matchApi';
 import ProfileModal from '../../profiles/components/ProfileModal';
+import WaitlistActions from '../components/WaitlistActions';
 import { SKILL_LABELS as LEVELS } from '../../../constants/skillLevels';
 import '../css/match.css';
 import '../css/matchDetail.css';
@@ -326,6 +327,8 @@ function MatchDetailContent({ match, preview, onRefresh }) {
               <button type="button" className={`detail-primary-button ${match.isOwner || match.isParticipant ? 'is-danger' : 'is-join'}`} disabled={preview || pending !== null || (match.isOwner !== true && match.isParticipant !== true && (match.status !== 'RECRUITING' || remaining === 0))} onClick={match.isOwner === true ? () => performAction('delete') : match.isParticipant === true ? handleLeave : () => performAction('join')}>{pending === 'join' ? '참가 신청 중…' : actionLabel}</button>
               {match.isOwner === true && !preview && pending === null && <Link className="match-edit-link" to={`/matches/${match.matchId}/edit`}>매치 수정하기</Link>}
             </div>
+            <WaitlistActions match={match} preview={preview} pending={pending} busyRef={busy}
+              onPendingChange={setPending} onRefresh={onRefresh} onLogin={login} />
             {actionError && <div className="detail-action-error" role="alert"><p className="match-error">{actionError}</p><button type="button" disabled={pending !== null} onClick={onRefresh}>새로고침</button></div>}
             <p className="detail-action-note">{match.isOwner === true ? '이 매치의 생성자예요.' : match.isParticipant === true ? '현재 이 매치에 참여 중이에요.' : '매치 일정과 모집 조건을 확인 후 신청해 주세요.'}</p>
           </section>
