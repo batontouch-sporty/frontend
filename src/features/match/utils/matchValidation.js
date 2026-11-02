@@ -33,7 +33,7 @@ export function validateMatch(values, { isEdit = false } = {}) {
     if (Number.isNaN(start.getTime())) errors.startAt = '올바른 시작 일시를 입력해 주세요.';
     if (Number.isNaN(end.getTime()) || end <= start) errors.endAt = '종료 일시는 시작 일시보다 늦어야 해요.';
   }
-  if (!Number.isInteger(Number(values.maxParticipant)) || Number(values.maxParticipant) < 1) errors.maxParticipant = '모집 인원은 1명 이상의 정수로 입력해 주세요.';
+  if (!Number.isInteger(Number(values.maxParticipant)) || Number(values.maxParticipant) < 2) errors.maxParticipant = '모집 인원은 방장 포함 2명 이상의 정수로 입력해 주세요.';
   if (!values.title.trim() || values.title.trim().length > 50) errors.title = '매치 제목을 1~50자로 입력해 주세요.';
   if ((!isEdit && !values.description.trim()) || values.description.length > 500) errors.description = isEdit ? '상세 안내는 500자 이하로 입력해 주세요.' : '상세 안내를 1~500자로 입력해 주세요.';
   if (!SKILL_LEVELS.some(level => level.value === values.skillLevel)) errors.skillLevel = '경기 실력 레벨을 선택해 주세요.';
