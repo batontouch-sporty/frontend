@@ -1,8 +1,9 @@
 .match-page { min-height: 100vh; background: var(--canvas); color: var(--text); font-size: 14px; }
 .match-page a { color: inherit; text-decoration: none; }
 .match-main { max-width: 808px; min-height: calc(100vh - 210px); padding: 24px 24px 80px; margin: auto; }
-.match-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
-.match-breadcrumb a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+.match-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+/* 터치 높이(44px)는 유지하고, 고정 너비 때문에 '홈' 양옆만 벌어지던 간격을 없앤다. */
+.match-breadcrumb a { display: inline-flex; align-items: center; min-height: 44px; }
 .match-breadcrumb a:active { opacity: .7; }
 @media (hover: hover) {
   .match-breadcrumb a:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -37,6 +38,8 @@
 .match-form input[aria-invalid=true], .match-form textarea[aria-invalid=true], .match-form select[aria-invalid=true] { border-color: var(--danger); }
 .match-form input:disabled, .match-form textarea:disabled, .match-form select:disabled { background: var(--canvas); color: var(--muted); cursor: not-allowed; }
 .match-form select:not(.sporty-district-select) { appearance: none; padding-right: 36px; background-image: url("../../auth/assets/chevron.svg"); background-repeat: no-repeat; background-position: right 12px center; background-size: 10px auto; }
+/* 포커스된 입력칸만 같은 방식으로 강조해, 브라우저 기본 검은 테두리가 칸마다 다르게 보이지 않게 한다. */
+.match-form input:focus-visible, .match-form textarea:focus-visible, .match-form select:focus-visible { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(17, 24, 32, .12); }
 .match-form input::placeholder, .match-form textarea::placeholder { color: var(--muted); }
 .match-form textarea { display: block; resize: vertical; min-height: 150px; }
 
@@ -47,7 +50,9 @@
 .match-search-message { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .match-search-message:empty { display: none; }
 .match-empty, .match-facility { margin: 12px 0 0; padding: 16px; border-radius: var(--radius-button); background: var(--canvas); font-size: 14px; }
-.match-empty { color: var(--muted); }
+.match-empty { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--line-strong); color: var(--muted); }
+/* 시설 미선택 상태: 점선 테두리와 위치 아이콘으로 '아직 비어 있음'을 보여 준다. */
+.match-empty::before { content: ''; flex-shrink: 0; width: 18px; height: 18px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E") no-repeat center / contain; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E") no-repeat center / contain; }
 .match-facility { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .match-facility > div { min-width: 0; }
 .match-facility p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
@@ -62,12 +67,15 @@
 .match-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(140px, calc(50% - 8px)), 1fr)); gap: 16px; }
 .match-control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .match-control label, .match-control > span { font-size: 13px; font-weight: 500; }
-.match-stepper { display: flex; align-items: center; gap: 4px; min-height: 44px; border: 1px solid var(--line-input); border-radius: var(--radius-field); }
+.match-stepper { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: 44px; border: 1px solid var(--line-input); border-radius: var(--radius-field); }
 .match-form .match-stepper button { flex-shrink: 0; width: 44px; height: 44px; border-radius: var(--radius-field); background: transparent; color: var(--text); font-size: 18px; }
 .match-form .match-stepper button:active:not(:disabled) { background: var(--canvas); }
-.match-form .match-stepper input { flex: 1; min-width: 44px; padding: 0; border: 0; text-align: right; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; appearance: textfield; }
+/* − / 숫자·명 / + 를 대칭으로 두고 숫자 묶음을 가운데에 놓는다. */
+.match-stepper-value { display: flex; flex: 1; align-items: baseline; justify-content: center; gap: 4px; min-width: 0; }
+.match-form .match-stepper input { flex: 0 0 auto; width: 3.5ch; min-width: 0; min-height: 0; padding: 0; border: 0; box-shadow: none; text-align: right; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; appearance: textfield; }
 .match-stepper input::-webkit-inner-spin-button { appearance: none; }
-.match-stepper > span { color: var(--muted); font-size: 13px; }
+.match-stepper-value > span { color: var(--muted); font-size: 13px; }
+.match-stepper:focus-within { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(17, 24, 32, .12); }
 
 .match-level-control { margin-top: 16px; }
 .match-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: var(--radius-button); background: var(--canvas); }
