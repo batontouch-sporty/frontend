@@ -12,7 +12,7 @@ jest.mock('../api/matchListApi', () => ({
 function wrapper({ children }) { return <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{children}</MemoryRouter>; }
 beforeEach(() => {
   jest.clearAllMocks(); localStorage.clear();
-  fetchMatchList.mockResolvedValue([]); fetchRecommendedMatches.mockResolvedValue([]);
+  fetchMatchList.mockResolvedValue([]); fetchRecommendedMatches.mockResolvedValue({ matches: [], fallback: false });
   loadMyPage.mockResolvedValue({ profile: { nickname: '회원', district: 'MAPO', preferenceSports: ['TENNIS'] } });
   loadMyMatches.mockResolvedValue([]);
 });
@@ -191,7 +191,7 @@ test('a quiet reload failure keeps the rows already on screen', async () => {
 test('a successful quiet reload clears the recommendation error left by an earlier failure', async () => {
   localStorage.setItem('at', 'test-token');
   requestMatchParticipation.mockResolvedValue({});
-  fetchRecommendedMatches.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce([]);
+  fetchRecommendedMatches.mockResolvedValueOnce({ matches: [], fallback: false }).mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce({ matches: [], fallback: false });
   const { result } = renderHook(useMatchList, { wrapper });
   await waitFor(() => expect(result.current.recommendationStatus).toBe('success'));
   await act(async () => { await result.current.onJoin(7); });
@@ -199,4 +199,37 @@ test('a successful quiet reload clears the recommendation error left by an earli
   await act(async () => { await result.current.onJoin(8); });
   expect(fetchRecommendedMatches).toHaveBeenCalledTimes(3);
   expect(result.current.recommendationError).toBe('');
+});
+
+test('logged-out visitors get the login recommendation state without calling AI', async () => {
+  const { result } = renderHook(useMatchList, { wrapper });
+  // 첫 렌더부터 login이라 '추천할 매치가 없어요'가 잠깐도 보이지 않는다.
+  expect(result.current.recommendationStatus).toBe('login');
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('login'));
+  expect(fetchRecommendedMatches).not.toHaveBeenCalled();
+});
+
+test('keeps the AI recommendation fallback flag and marks 404 as not retryable', async () => {
+  localStorage.setItem('at', 'test-token');
+  fetchRecommendedMatches.mockResolvedValueOnce({ matches: [{ id: 3, title: '최신 매치' }], fallback: true });
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('success'));
+  expect(result.current.recommendationFallback).toBe(true);
+  expect(result.current.recommendations.map(match => match.id)).toEqual([3]);
+});
+
+test('a missing member is reported without a retry button', async () => {
+  localStorage.setItem('at', 'test-token');
+  fetchRecommendedMatches.mockRejectedValueOnce({ response: { status: 404 } });
+  const { result } = renderHook(useMatchList, { wrapper });
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('error'));
+  expect(result.current.recommendationError).toContain('회원 정보를 찾지 못했어요');
+  expect(result.current.recommendationRetryable).toBe(false);
+});
+
+test('signed-in members start in the loading state on the first render', async () => {
+  localStorage.setItem('at', 'test-token');
+  const { result } = renderHook(useMatchList, { wrapper });
+  expect(result.current.recommendationStatus).toBe('loading');
+  await waitFor(() => expect(result.current.recommendationStatus).toBe('success'));
 });
