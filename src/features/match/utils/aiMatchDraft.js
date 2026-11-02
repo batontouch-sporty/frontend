@@ -22,7 +22,7 @@ export function prepareAiMatchDraft(prompt, result) {
   for (const field of ['sportType', 'skillLevel', 'startAt', 'endAt', 'title', 'description', 'genderGroup']) {
     if (typeof source[field] === 'string') initialValues[field] = source[field];
   }
-  if (Number.isInteger(source.maxParticipant) && source.maxParticipant > 0) initialValues.maxParticipant = source.maxParticipant;
+  if (Number.isInteger(source.maxParticipant) && source.maxParticipant >= 2) initialValues.maxParticipant = source.maxParticipant;
   const facility = result?.facility;
   const selectedFacility = facility && Number.isInteger(facility.serviceId) && facility.serviceId > 0 && typeof facility.name === 'string' ? facility : undefined;
   // 시설명만 추정한 경우 시설 ID를 만들지 않는다. 사용자가 실제 시설을 검색·선택해야 한다.
