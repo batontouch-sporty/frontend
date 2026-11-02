@@ -1,4 +1,5 @@
 import { prepareAiMatchDraft } from './aiMatchDraft';
+import { initialMatchValues } from './matchValidation';
 
 test.each(['MALE', 'FEMALE', 'MIXED'])('preserves gender %s in the AI draft', genderGroup => {
   const draft = prepareAiMatchDraft('매치 만들어줘', { initialValues: { genderGroup, title: '풋살', serviceId: 99, extra: true } });
@@ -19,6 +20,17 @@ test.each([[2, 2], [10, 10]])('copies maxParticipant %p when it is 2 or more', (
   expect(prepareAiMatchDraft('매치', { initialValues: { maxParticipant: value } }).initialValues.maxParticipant).toBe(expected);
 });
 
-test.each([0, 1, -3, 1.5])('does not copy maxParticipant %p below 2', value => {
-  expect(prepareAiMatchDraft('매치', { initialValues: { maxParticipant: value } }).initialValues).not.toHaveProperty('maxParticipant');
+test.each([0, 1, -3, 1.5])('clears maxParticipant %p below 2 so the form starts empty', value => {
+  expect(prepareAiMatchDraft('매치', { initialValues: { maxParticipant: value } }).initialValues.maxParticipant).toBe('');
+});
+
+test('keeps the form default when AI did not mention maxParticipant', () => {
+  const draft = prepareAiMatchDraft('매치', { initialValues: { sportType: 'FUTSAL' } });
+  expect(draft.initialValues).not.toHaveProperty('maxParticipant');
+  expect(initialMatchValues(draft.initialValues).maxParticipant).toBe(12);
+});
+
+test('shows an empty maxParticipant in the form when AI gave less than 2', () => {
+  const draft = prepareAiMatchDraft('매치', { initialValues: { maxParticipant: 1 } });
+  expect(initialMatchValues(draft.initialValues).maxParticipant).toBe('');
 });

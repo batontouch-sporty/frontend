@@ -22,7 +22,10 @@ export function prepareAiMatchDraft(prompt, result) {
   for (const field of ['sportType', 'skillLevel', 'startAt', 'endAt', 'title', 'description', 'genderGroup']) {
     if (typeof source[field] === 'string') initialValues[field] = source[field];
   }
-  if (Number.isInteger(source.maxParticipant) && source.maxParticipant >= 2) initialValues.maxParticipant = source.maxParticipant;
+  // 인원을 말하지 않았으면(값 없음) 폼 기본값을 쓰고, 값이 왔는데 2명 미만이면 비워서 사용자가 직접 입력하게 한다.
+  if (source.maxParticipant != null) {
+    initialValues.maxParticipant = Number.isInteger(source.maxParticipant) && source.maxParticipant >= 2 ? source.maxParticipant : '';
+  }
   const facility = result?.facility;
   const selectedFacility = facility && Number.isInteger(facility.serviceId) && facility.serviceId > 0 && typeof facility.name === 'string' ? facility : undefined;
   // 시설명만 추정한 경우 시설 ID를 만들지 않는다. 사용자가 실제 시설을 검색·선택해야 한다.
