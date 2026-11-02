@@ -11,6 +11,106 @@ const labels = application => application === 'prometheus'
 const up = (application, value) => ({ metric: labels(application), value: [100, String(value)] });
 const range = (application, values) => ({ metric: labels(application), values });
 const aggregate = (application, value) => ({ metric: { application }, value: [100, String(value)] });
+const deferred = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+
+test('AI instant·range 쌍은 응답 순서가 달라도 함께 갱신하고 한쪽 실패 시 이전 완전한 쌍을 유지한다', async () => {
+  const second = { count: deferred(), sum: deferred(), trendCount: deferred(), trendSum: deferred() };
+  const third = { count: deferred(), sum: deferred(), trendCount: deferred(), trendSum: deferred() };
+  let countCalls = 0; let sumCalls = 0; let trendCountCalls = 0; let trendSumCalls = 0;
+  const metric = (value) => [{ metric: { type: 'search', outcome: 'success' }, value: [100, String(value)] }];
+  const series = (end, value) => [{ metric: {}, values: [[end, String(value)]] }];
+  queryInstant.mockImplementation(({ query }) => {
+    if (query.includes('ai_request_seconds_count')) return ++countCalls === 1 ? Promise.resolve(metric(2)) : countCalls === 2 ? second.count.promise : third.count.promise;
+    if (query.includes('ai_request_seconds_sum')) return ++sumCalls === 1 ? Promise.resolve(metric(0.4)) : sumCalls === 2 ? second.sum.promise : third.sum.promise;
+    return Promise.resolve([]);
+  });
+  queryRange.mockImplementation(({ query, end }) => {
+    if (query.includes('ai_request_seconds_count')) return ++trendCountCalls === 1 ? Promise.resolve(series(end, 2)) : trendCountCalls === 2 ? second.trendCount.promise : third.trendCount.promise;
+    if (query.includes('ai_request_seconds_sum')) return ++trendSumCalls === 1 ? Promise.resolve(series(end, 0.4)) : trendSumCalls === 2 ? second.trendSum.promise : third.trendSum.promise;
+    return Promise.resolve([]);
+  });
+  render(<MsaMonitoringDashboard />);
+  fireEvent.click(screen.getByRole('tab', { name: '도메인 · AI' }));
+  const ai = screen.getByText('AI 처리 결과').closest('article');
+  const trend = screen.getByRole('article', { name: 'AI 평균 응답시간 추이' });
+  await waitFor(() => expect(within(ai).getByText('200 ms')).toBeInTheDocument());
+  expect(within(trend).getByText('200 ms')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
+  await waitFor(() => expect(countCalls).toBe(2));
+  await act(async () => { second.count.resolve(metric(4)); second.trendSum.resolve(series(queryRange.mock.calls.at(-1)[0].end, 0.4)); await settle(); });
+  expect(within(ai).getByText('200 ms')).toBeInTheDocument();
+  expect(within(trend).getByText('200 ms')).toBeInTheDocument();
+  await act(async () => { second.sum.resolve(metric(0.4)); second.trendCount.resolve(series(queryRange.mock.calls.at(-2)[0].end, 4)); await settle(); });
+  await waitFor(() => expect(within(ai).getByText('100 ms')).toBeInTheDocument());
+  expect(within(trend).getByText('100 ms')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
+  await waitFor(() => expect(countCalls).toBe(3));
+  await act(async () => { third.count.resolve(metric(8)); third.trendSum.resolve(series(queryRange.mock.calls.at(-1)[0].end, 0.4)); await settle(); });
+  await act(async () => { third.sum.reject(new Error('offline')); third.trendCount.reject(new Error('offline')); await settle(); });
+  await waitFor(() => expect(screen.getByText(/갱신 실패/)).toBeInTheDocument());
+  expect(within(ai).getByText('100 ms')).toBeInTheDocument();
+  expect(within(trend).getByText('100 ms')).toBeInTheDocument();
+}, 20000);
+
+test('도메인 탭은 선택 기간의 Saga·AI A30과 응답시간 A31을 조회하고 기간 변경 시 이전 값을 숨긴다', async () => {
+  queryInstant.mockImplementation(({ query }) => query.includes('saga_results_total')
+    ? Promise.resolve([{ metric: { outcome: 'success' }, value: [100, '2'] }]) : Promise.resolve([]));
+  queryRange.mockResolvedValue([]);
+  render(<MsaMonitoringDashboard />);
+  fireEvent.click(screen.getByRole('tab', { name: '도메인 · AI' }));
+  await waitFor(() => expect(within(screen.getByText('탈퇴 Saga 최종 결과').closest('article')).getByText('2.0')).toBeInTheDocument());
+  const domainQueries = queryInstant.mock.calls.map(([request]) => request.query).filter(query => query.includes('sporty_withdrawal') || query.includes('ai_request'));
+  expect(domainQueries).toHaveLength(4);
+  expect(domainQueries[0]).toContain('increase(sporty_withdrawal_saga_results_total{');
+  expect(domainQueries[0]).toContain('outcome=~"success|rejected|timed_out"}[900s]');
+  expect(domainQueries[1]).toContain('increase(sporty_withdrawal_saga_late_results_total{');
+  expect(domainQueries[1]).toContain('outcome=~"cleaned|rejected"}[900s]');
+  for (const query of domainQueries.slice(2)) {
+    expect(query).toMatch(/increase\(ai_request_seconds_(count|sum)\{/);
+    expect(query).toContain('type=~"search|draft|recommend"');
+    expect(query).toContain('outcome=~"success|fallback|error"}[900s]');
+  }
+  expect(domainQueries.every(query => query.includes('job="sporty-services"') && query.includes('application='))).toBe(true);
+  const aiRanges = queryRange.mock.calls.map(([request]) => request).filter(request => request.query.includes('ai_request'));
+  expect(aiRanges).toHaveLength(2);
+  for (const request of aiRanges) {
+    expect(request.query).toMatch(/sum\(rate\(ai_request_seconds_(count|sum)\{/);
+    expect(request.query).toContain('type=~"search|draft|recommend"');
+    expect(request.query).toContain('outcome=~"success|fallback|error"}[5m]');
+    expect(request.query).toContain('job="sporty-services"');
+    expect(request.query).toContain('application="ai-service"');
+  }
+  const aiInstants = queryInstant.mock.calls.map(([request]) => request).filter(request => request.query.includes('ai_request'));
+  expect(aiInstants[0].time).toBe(aiInstants[1].time);
+  expect(aiRanges[0]).toEqual(expect.objectContaining({ start: aiRanges[1].start, end: aiRanges[1].end, step: aiRanges[1].step }));
+  const oldSignal = queryInstant.mock.calls.at(-1)[0].signal;
+  for (const [rangeValue, duration] of [['1h', '3600s'], ['6h', '21600s'], ['24h', '86400s']]) {
+    fireEvent.change(screen.getByLabelText('조회 시간'), { target: { value: rangeValue } });
+    if (rangeValue === '1h') {
+      expect(oldSignal.aborted).toBe(true);
+      expect(within(screen.getByText('탈퇴 Saga 최종 결과').closest('article')).getAllByText('조회 중')).toHaveLength(3);
+    }
+    await waitFor(() => expect(queryInstant.mock.calls.some(([request]) => request.query.includes('saga_results_total') && request.query.includes(`[${duration}]`))).toBe(true));
+  }
+});
+
+test('도메인 이전 세션의 완전한 AI 쌍도 새 세션에 표시하지 않는다', async () => {
+  const first = new AbortController();
+  const next = new AbortController();
+  queryInstant.mockImplementation(({ query }) => Promise.resolve(query.includes('ai_request_seconds_count')
+    ? [{ metric: { type: 'search', outcome: 'success' }, value: [100, '2'] }]
+    : query.includes('ai_request_seconds_sum') ? [{ metric: { type: 'search', outcome: 'success' }, value: [100, '0.4'] }] : []));
+  const view = render(<MsaMonitoringDashboard sessionSignal={first.signal} />);
+  fireEvent.click(screen.getByRole('tab', { name: '도메인 · AI' }));
+  await waitFor(() => expect(screen.getByText('200 ms')).toBeInTheDocument());
+  const oldSignal = queryInstant.mock.calls.at(-1)[0].signal;
+  queryInstant.mockImplementation(() => new Promise(() => {}));
+  queryRange.mockImplementation(() => new Promise(() => {}));
+  view.rerender(<MsaMonitoringDashboard sessionSignal={next.signal} />);
+  expect(oldSignal.aborted).toBe(true);
+  expect(screen.queryByText('200 ms')).not.toBeInTheDocument();
+  expect(within(screen.getByText('AI 처리 결과').closest('article')).getAllByText('조회 중')).toHaveLength(5);
+});
 
 beforeEach(() => {
   queryInstant.mockReset().mockResolvedValue([]);
@@ -195,10 +295,10 @@ test('5개 탭과 키보드 이동, 미연동 영역, 상세 데이터 펼치기
   fireEvent.keyDown(screen.getByRole('tab', { name: '서비스 개요' }), { key: 'ArrowRight' });
   expect(screen.getByRole('tab', { name: 'Feign · CB' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'msa-tab-feign');
-  for (const name of ['Kafka', '도메인 · AI']) {
-    fireEvent.click(screen.getByRole('tab', { name }));
-    expect(screen.getByRole('tabpanel')).toHaveTextContent('미연동');
-  }
+  fireEvent.click(screen.getByRole('tab', { name: 'Kafka' }));
+  expect(screen.getByRole('tabpanel')).toHaveTextContent('미연동');
+  fireEvent.click(screen.getByRole('tab', { name: '도메인 · AI' }));
+  expect(screen.getByRole('tabpanel')).toHaveTextContent('계측 대기');
   fireEvent.click(screen.getByRole('tab', { name: '서비스 개요' }));
   fireEvent.click(screen.getByText('상세 데이터 보기'));
   await waitFor(() => expect(within(screen.getByText('상세 데이터 보기').closest('details')).getByRole('table')).toHaveTextContent('user-service'));
@@ -296,11 +396,11 @@ test('HTTP 상태 코드 합계와 전체 RPS를 비교하고 미분류 응답�
   expect(chart.querySelector('.msa-http-unclassified')).toBeInTheDocument();
 });
 
-test('Heap 비율은 동일 인스턴스의 Used/Committed를 비교하고 서비스는 최대 비율을 표시한다', async () => {
+test('Heap 비율은 동일 인스턴스의 Used/유효 Pool Max를 비교하고 서비스는 최대 비율을 표시한다', async () => {
   const instance = (id, name, value) => ({ metric: { application: id, instance: name }, value: [100, String(value)] });
   queryInstant.mockImplementation(({ query }) => {
     if (query === 'up') return Promise.resolve([up('user-service', 1), up('match-service', 1)]);
-    if (query.includes('jvm_memory_committed_bytes')) return Promise.resolve([instance('user-service', 'a', 120 * 1048576), instance('user-service', 'b', 80 * 1048576)]);
+    if (query.includes('jvm_memory_max_bytes')) return Promise.resolve([instance('user-service', 'a', 120 * 1048576), instance('user-service', 'b', 80 * 1048576)]);
     if (query.includes('jvm_memory_used_bytes') && query.includes('instance')) return Promise.resolve([
       instance('user-service', 'a', 60 * 1048576), instance('user-service', 'b', 40 * 1048576), instance('match-service', 'c', 20 * 1048576),
     ]);
@@ -310,10 +410,10 @@ test('Heap 비율은 동일 인스턴스의 Used/Committed를 비교하고 서�
   });
   render(<MsaMonitoringDashboard />);
   const chart = screen.getByRole('article', { name: '서비스별 CPU와 Heap 사용량' });
-  await waitFor(() => expect(within(chart).getByText('100.0 MiB · 50.0% · Committed 대비')).toBeInTheDocument());
+  await waitFor(() => expect(within(chart).getByText('100.0 MiB · 50.0% · 유효 Heap Pool Max 대비')).toBeInTheDocument());
   expect(within(chart).getByText('20.0 MiB · 계산 불가')).toBeInTheDocument();
   expect(within(chart).getByText('12.0%')).toBeInTheDocument();
-  expect(queryInstant.mock.calls.some(([request]) => request.query.includes('jvm_memory_max_bytes'))).toBe(false);
+  expect(queryInstant.mock.calls.some(([request]) => request.query.includes('jvm_memory_max_bytes'))).toBe(true);
 });
 
 test('히트맵은 공통 구간에서 복수 인스턴스를 합치고 누락을 DOWN으로 채우지 않는다', () => {
@@ -346,10 +446,10 @@ test('히트맵은 A31의 네 조회 범위와 KST 셀 상태를 표시한다', 
   } finally { now.mockRestore(); }
 });
 
-test('HTTP 상태 코드 조회 실패와 Heap Committed 조회 실패를 실제 0으로 표시하지 않는다', async () => {
+test('HTTP 상태 코드 조회 실패와 Heap Max 조회 실패를 실제 0으로 표시하지 않는다', async () => {
   queryInstant.mockImplementation(({ query }) => {
     if (query === 'up') return Promise.resolve([up('user-service', 1)]);
-    if (query.includes('by (application, status)') || query.includes('jvm_memory_committed_bytes')) return Promise.reject(new Error('offline'));
+    if (query.includes('by (application, status)') || query.includes('jvm_memory_max_bytes')) return Promise.reject(new Error('offline'));
     if (query.includes('jvm_memory_used_bytes')) return Promise.resolve([aggregate('user-service', 104857600)]);
     if (query.includes('http_server_requests_seconds_count') && !query.includes('status=~')) return Promise.resolve([aggregate('user-service', 2)]);
     return Promise.resolve([]);
@@ -363,20 +463,20 @@ test('HTTP 상태 코드 조회 실패와 Heap Committed 조회 실패를 실제
 });
 
 test.each([
-  ['모든 Max 유효', [200, 100, 50]],
-  ['G1 Eden Max=-1', [-1, 200, 50]],
-  ['G1 Survivor Max=-1', [200, 100, -1]],
-  ['일부 Max만 유효', [-1, 200, -1]],
-])('%s: Pool Max를 전체 Heap으로 가정하지 않고 Committed 대비 표시한다', async (_, maxValues) => {
+  ['모든 Max 유효', [200, 100, 50], '28.6% · 유효 Heap Pool Max 대비'],
+  ['G1 Eden Max=-1', [-1, 200, 50], '40.0% · 유효 Heap Pool Max 대비'],
+  ['G1 Survivor Max=-1', [200, 100, -1], '33.3% · 유효 Heap Pool Max 대비'],
+  ['일부 Max만 유효', [-1, 200, -1], '50.0% · 유효 Heap Pool Max 대비'],
+  ['모든 Max=-1', [-1, -1, -1], '계산 불가'],
+  ['모든 Max=0', [0, 0, 0], '계산 불가'],
+  ['NaN·Inf 제외', ['NaN', 'Inf', 200], '50.0% · 유효 Heap Pool Max 대비'],
+])('%s: 양수·유한 Pool Max만 합산한다', async (_, maxValues, expected) => {
   queryInstant.mockImplementation(({ query }) => {
     if (query === 'up') return Promise.resolve([up('user-service', 1)]);
     if (query.includes('jvm_memory_max_bytes')) return Promise.resolve(maxValues.map((value, index) => ({
       metric: { application: 'user-service', instance: 'a', id: ['eden', 'old', 'survivor'][index] },
       value: [100, String(value === -1 ? -1 : value * 1048576)],
     })));
-    if (query.includes('jvm_memory_committed_bytes')) return Promise.resolve([
-      { metric: { application: 'user-service', instance: 'a' }, value: [100, String(200 * 1048576)] },
-    ]);
     if (query.includes('jvm_memory_used_bytes') && query.includes('instance')) return Promise.resolve([
       { metric: { application: 'user-service', instance: 'a' }, value: [100, String(100 * 1048576)] },
     ]);
@@ -385,8 +485,9 @@ test.each([
   });
   render(<MsaMonitoringDashboard />);
   const chart = screen.getByRole('article', { name: '서비스별 CPU와 Heap 사용량' });
-  await waitFor(() => expect(within(chart).getByText('100.0 MiB · 50.0% · Committed 대비')).toBeInTheDocument());
-  expect(queryInstant.mock.calls.some(([request]) => request.query.includes('jvm_memory_max_bytes'))).toBe(false);
+  await waitFor(() => expect(within(chart).getByText(`100.0 MiB · ${expected}`)).toBeInTheDocument());
+  expect(queryInstant.mock.calls.some(([request]) => request.query.includes('jvm_memory_max_bytes'))).toBe(true);
+  expect(queryInstant.mock.calls.some(([request]) => request.query.includes('jvm_memory_committed_bytes'))).toBe(false);
 });
 
 const heapSample = (instance, value) => ({ metric: { application: 'user-service', instance }, value: [100, String(value)] });
@@ -394,30 +495,31 @@ const heapRequest = data => ({ kind: 'success', data });
 const mib = 1048576;
 
 test.each([
-  ['Committed 정상', [heapSample('a', 50 * mib)], [heapSample('a', 100 * mib)], '50.0% · Committed 대비'],
-  ['Committed 없음', [heapSample('a', 50 * mib)], [], '계산 불가'],
-  ['Committed 0', [heapSample('a', 50 * mib)], [heapSample('a', 0)], '계산 불가'],
-  ['Committed NaN', [heapSample('a', 50 * mib)], [heapSample('a', 'NaN')], '계산 불가'],
-  ['Committed Inf', [heapSample('a', 50 * mib)], [heapSample('a', 'Inf')], '계산 불가'],
+  ['Max 정상', [heapSample('a', 50 * mib)], [heapSample('a', 100 * mib)], '50.0% · 유효 Heap Pool Max 대비'],
+  ['Max 없음', [heapSample('a', 50 * mib)], [], '계산 불가'],
+  ['Max 0', [heapSample('a', 50 * mib)], [heapSample('a', 0)], '계산 불가'],
+  ['Max NaN', [heapSample('a', 50 * mib)], [heapSample('a', 'NaN')], '계산 불가'],
+  ['Max Inf', [heapSample('a', 50 * mib)], [heapSample('a', 'Inf')], '계산 불가'],
   ['Used 미수집', [], [heapSample('a', 100 * mib)], '계산 불가'],
   ['Used NaN', [heapSample('a', 'NaN')], [heapSample('a', 100 * mib)], '계산 불가'],
-  ['Used > Committed', [heapSample('a', 110 * mib)], [heapSample('a', 100 * mib)], '계산 불가'],
+  ['실제 Used 0', [heapSample('a', 0)], [heapSample('a', 100 * mib)], '0.0% · 유효 Heap Pool Max 대비'],
+  ['Used > Max', [heapSample('a', 110 * mib)], [heapSample('a', 100 * mib)], '110.0% · 유효 Heap Pool Max 대비'],
   ['인스턴스 불일치', [heapSample('a', 50 * mib)], [heapSample('b', 100 * mib)], '계산 불가'],
-  ['복수 인스턴스 최대 비율', [heapSample('a', 50 * mib), heapSample('b', 70 * mib)], [heapSample('a', 100 * mib), heapSample('b', 100 * mib)], '70.0% · Committed 대비'],
-  ['복수 인스턴스 일부 누락', [heapSample('a', 50 * mib), heapSample('b', 70 * mib)], [heapSample('a', 100 * mib)], '계산 불가'],
-])('%s: Heap MiB를 유지하고 신뢰 가능한 비율만 표시한다', (_, used, committed, expected) => {
+  ['복수 인스턴스 최대 비율', [heapSample('a', 50 * mib), heapSample('b', 70 * mib)], [heapSample('a', 100 * mib), heapSample('b', 100 * mib)], '70.0% · 유효 Heap Pool Max 대비'],
+  ['복수 인스턴스 일부 Max 누락', [heapSample('a', 50 * mib), heapSample('b', 70 * mib)], [heapSample('a', 100 * mib)], '50.0% · 유효 Heap Pool Max 대비'],
+])('%s: Heap MiB를 유지하고 유효한 비율만 표시한다', (_, used, max, expected) => {
   render(<ResourceGauges services={[["user-service"]]} selected="all" statuses={{ 'user-service': 'up' }}
     cpu={heapRequest([])} heap={heapRequest([aggregate('user-service', 100 * mib)])}
-    heapUsed={heapRequest(used)} heapCommitted={heapRequest(committed)} />);
+    heapUsed={heapRequest(used)} heapMax={heapRequest(max)} />);
   expect(screen.getByText(`100.0 MiB · ${expected}`)).toBeInTheDocument();
 });
 
-test('Committed 조회 오류와 서비스 미수집은 Heap 사용량을 0으로 조작하지 않는다', () => {
+test('Max 조회 오류와 서비스 미수집은 Heap 사용량을 0으로 조작하지 않는다', () => {
   const props = { services: [['user-service']], selected: 'all', cpu: heapRequest([]),
     heap: heapRequest([aggregate('user-service', 100 * mib)]), heapUsed: heapRequest([heapSample('a', 50 * mib)]) };
-  const view = render(<ResourceGauges {...props} statuses={{ 'user-service': 'up' }} heapCommitted={{ kind: 'error' }} />);
+  const view = render(<ResourceGauges {...props} statuses={{ 'user-service': 'up' }} heapMax={{ kind: 'error' }} />);
   expect(screen.getByText('100.0 MiB · 조회 실패')).toBeInTheDocument();
-  view.rerender(<ResourceGauges {...props} statuses={{ 'user-service': 'missing' }} heapCommitted={heapRequest([heapSample('a', 100 * mib)])} />);
+  view.rerender(<ResourceGauges {...props} statuses={{ 'user-service': 'missing' }} heapMax={heapRequest([heapSample('a', 100 * mib)])} />);
   expect(screen.getAllByText('미수집').length).toBeGreaterThan(0);
 });
 
