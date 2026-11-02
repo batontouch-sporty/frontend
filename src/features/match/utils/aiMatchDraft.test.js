@@ -14,3 +14,11 @@ test.each([null, 123, {}, []])('does not copy a non-string gender %p', genderGro
 test('keeps an uninterpreted prompt without inventing conditions', () => {
   expect(prepareAiMatchDraft('여성 풋살')).toEqual({ prompt: '여성 풋살', initialValues: {}, facility: undefined, interpreted: false });
 });
+
+test.each([[2, 2], [10, 10]])('copies maxParticipant %p when it is 2 or more', (value, expected) => {
+  expect(prepareAiMatchDraft('매치', { initialValues: { maxParticipant: value } }).initialValues.maxParticipant).toBe(expected);
+});
+
+test.each([0, 1, -3, 1.5])('does not copy maxParticipant %p below 2', value => {
+  expect(prepareAiMatchDraft('매치', { initialValues: { maxParticipant: value } }).initialValues).not.toHaveProperty('maxParticipant');
+});
