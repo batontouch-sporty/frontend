@@ -34,7 +34,7 @@ test('waits for an accepted participation to be confirmed', async () => {
   api.post.mockResolvedValue({ status: 202, data: { requestId: id, matchId: 101, status: 'PENDING' } });
   api.get.mockResolvedValue({ data: { requestId: id, matchId: 101, requestType: 'JOIN', status: 'CONFIRMED', refundStatus: 'NOT_REQUIRED' } });
   await expect(joinMatch(101, { delays: [0] })).resolves.toEqual({ requestId: id, matchId: 101, status: 'PENDING' });
-  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${id}`, { signal: undefined });
+  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${id}`, { signal: undefined, timeout: expect.any(Number) });
 });
 
 test('deletes the match and requires HTTP 204', async () => {
@@ -88,7 +88,7 @@ test('waits for a 202 creation request until it is confirmed', async () => {
   await expect(createMatch({ title: '풋살' }, { onPending, delays: [0, 0, 0] })).resolves.toBe(17);
   expect(onPending).toHaveBeenCalledTimes(1);
   expect(api.get).toHaveBeenCalledTimes(2);
-  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${requestId}`, { signal: undefined });
+  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${requestId}`, { signal: undefined, timeout: expect.any(Number) });
 });
 
 test('rejects a 202 response without a request ID', async () => {
@@ -181,6 +181,19 @@ test('polls through every default delay within the deadline', async () => {
   now.mockRestore(); timer.mockRestore();
   expect(error.message).toContain('아직 요청을 처리하고 있어요');
   expect(api.get).toHaveBeenCalledTimes(REQUEST_POLL_DELAYS.length);
+});
+
+test('gives each status request only the time left before the deadline', async () => {
+  let clock = 0;
+  const now = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  const timer = jest.spyOn(global, 'setTimeout').mockImplementation((done, ms) => { clock += ms; done(); return 0; });
+  const timeouts = [];
+  api.get.mockImplementation((url, config) => { timeouts.push(config.timeout); clock += config.timeout; return Promise.reject({ code: 'ECONNABORTED', isAxiosError: true }); });
+  const error = await waitForMatchRequest(requestId, { delays: [1000, 1000], timeout: 5000 }).catch(caught => caught);
+  now.mockRestore(); timer.mockRestore();
+  expect(timeouts[0]).toBe(4000);
+  expect(api.get).toHaveBeenCalledTimes(1);
+  expect(error.message).toContain('처리 결과를 확인하지 못했어요');
 });
 
 test('stops at once on a malformed status response', async () => {

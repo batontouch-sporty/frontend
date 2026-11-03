@@ -5,8 +5,9 @@ const REQUEST_STATUSES = ['PENDING', 'CONFIRMED', 'FAILED', 'CANCELLED'];
 // 1초 뒤 첫 조회, 이후 2초 간격으로 약 60초까지 확인한다.
 export const REQUEST_POLL_DELAYS = [1000, ...Array(29).fill(2000)];
 
-export async function getMatchRequest(requestId, signal) {
-  const { data } = await api.get(`/api/matches/requests/${encodeURIComponent(requestId)}`, { signal });
+// timeout(ms)을 주면 응답하지 않는 조회도 그 시간 안에 끝낸다.
+export async function getMatchRequest(requestId, signal, timeout) {
+  const { data } = await api.get(`/api/matches/requests/${encodeURIComponent(requestId)}`, timeout ? { signal, timeout } : { signal });
   if (data?.requestId !== requestId || !REQUEST_STATUSES.includes(data.status)) {
     throw new Error('요청 상태 응답 형식을 확인할 수 없어요.');
   }
@@ -38,7 +39,8 @@ export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_
     // 기다리는 동안 마감이 지났으면 더 조회하지 않고 지금까지의 상태로 끝낸다.
     if (Date.now() >= deadline) break;
     let result;
-    try { result = await getMatchRequest(requestId, signal); }
+    // 조회 한 번도 남은 시간 안에 끝내야 전체 마감을 지킨다.
+    try { result = await getMatchRequest(requestId, signal, Math.max(1, deadline - Date.now())); }
     catch (error) {
       if (signal?.aborted) throw error;
       if (isTransient(error) && failures++ < TRANSIENT_RETRIES) { lastFailed = true; continue; }
