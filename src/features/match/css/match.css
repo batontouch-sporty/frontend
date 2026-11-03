@@ -104,6 +104,7 @@
 .match-form .match-submit:active:not(:disabled) { background: var(--ink-raised); }
 .match-error { margin: 4px 0 0; color: var(--danger); font-size: 13px; line-height: 1.6; }
 .match-submit-error { margin-top: 12px; }
+.match-deposit-note { margin: 0 0 12px; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
 .match-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .match-edit-state { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; line-height: 1.6; }
 .match-edit-state button { min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-button); background: var(--ink); color: var(--volt); cursor: pointer; }

@@ -1,5 +1,7 @@
 import api from '../../../api/axios';
 import { toMatchCard } from '../../main/api/aiMatchApi';
+import { settleAccepted } from './matchApi';
+import { depositErrorMessage } from '../utils/depositMessages';
 
 const SEARCH_FIELDS = ['serviceId', 'titleKeyword', 'descriptionKeyword', 'startAt', 'endAt', 'maxParticipant', 'skillLevel', 'sportType', 'region', 'status', 'isFree'];
 
@@ -20,10 +22,10 @@ export async function fetchRecommendedMatches(signal) {
   const { data } = await api.get('/api/ai/matches/recommendations', { signal, timeout: 15000 });
   return { matches: readList(Array.isArray(data) ? data : data?.matches), fallback: data?.fallback === true };
 }
-export async function requestMatchParticipation(matchId) {
+export async function requestMatchParticipation(matchId, options) {
   if (!Number.isSafeInteger(matchId) || matchId < 1) throw new Error('매치 번호가 올바르지 않아요.');
   const response = await api.post(`/api/matches/${matchId}/participants`, undefined, { timeout: 15000 });
-  if (response.status !== 201) throw new Error('참가 완료 여부를 확인할 수 없어요. 목록을 새로고침해주세요.');
+  await settleAccepted(response, '참가 완료 여부를 확인할 수 없어요. 목록을 새로고침해주세요.', options);
   return response.data;
 }
 export function toMatchListItem(dto) {
@@ -37,6 +39,9 @@ export function isRetryableError(error) {
   return ![401, 403, 404, 501].includes(status);
 }
 export function matchRequestError(error, kind = 'list') {
+  if (kind === 'join' && error.depositRequest) return error.message;
+  const depositMessage = kind === 'join' && depositErrorMessage(error.response?.data?.code);
+  if (depositMessage) return depositMessage;
   const status = error.response?.status;
   if (status === 401) return '로그인이 필요해요. 다시 로그인해 주세요.';
   if (status === 403) return '이 작업을 할 권한이 없어요.';

@@ -21,3 +21,10 @@ export const saveProfile = form => api.put('/api/profiles/me', {
 
 // [USR-04] axios.delete의 요청 본문은 두 번째 인자의 data에 담는다.
 export const withdrawUser = password => api.delete('/api/users/me', { data: { password } });
+
+// [포인트] GET /api/users/me/points → { points, attendanceRewardCount, participationSuspended, suspendedUntil }
+export const loadMyPoints = ({ signal }) => api.get('/api/users/me/points', { signal }).then(({ data }) => data);
+
+// [포인트 이력] 최신순 페이지 { content, page, size, totalElements, totalPages }
+export const loadPointHistory = ({ page = 0, signal }) => api.get('/api/users/me/points/history', { params: { page, size: 20 }, signal })
+  .then(({ data }) => data);
