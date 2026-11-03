@@ -12,7 +12,7 @@ function Step({ number, title, description, children }) {
   </section>;
 }
 
-export default function MatchForm({ initialValues, selectedFacility, searchFacilities, onSubmit, isEdit = false, submitLabel = '매치 개설 완료하기' }) {
+export default function MatchForm({ initialValues, selectedFacility, searchFacilities, onSubmit, isEdit = false, submitLabel = '매치 개설 완료하기', notice }) {
   // 전달받은 initialValues를 최초 마운트 때만 폼 상태로 복사한다. 현재 생성 페이지의 AI 초안 전달은 미연결이다.
   // [AI-03] 생성 담당자는 부모에서 초안 props를 연결하고, 새 초안 적용 시 location.key 등을 key로 사용해 폼을 다시 마운트해야 한다.
   // startAt/endAt → 날짜/시간 입력 분리는 utils/matchValidation.js의 initialMatchValues에서 처리한다.
@@ -157,6 +157,6 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
         <div className="match-control match-description"><div className="match-label-row"><label htmlFor="description">상세 안내 및 매너 수칙</label><span>{values.description.length} / 500</span></div><textarea {...fieldProps('description')} maxLength="500" rows="6" placeholder={'함께할 분들에게 매치를 소개해 주세요.\n준비물, 모임 장소, 경기 수칙 등을 안내하면 좋아요.'} />{errorText('description')}</div>
       </Step>
     </fieldset>
-    <div className="match-actions"><button className="match-submit" type="submit" disabled={pending}>{pending ? (isEdit ? '매치 저장 중…' : '매치 개설 중…') : submitLabel}</button><div role="alert">{submitError && <p className="match-error match-submit-error">{submitError}</p>}{Object.values(errors).some(Boolean) && <p className="match-error">입력 항목을 확인해 주세요.</p>}</div></div>
+    <div className="match-actions">{notice}<button className="match-submit" type="submit" disabled={pending}>{pending ? (isEdit ? '매치 저장 중…' : '매치 개설 중…') : submitLabel}</button><div role="alert">{submitError && <p className="match-error match-submit-error">{submitError}</p>}{Object.values(errors).some(Boolean) && <p className="match-error">입력 항목을 확인해 주세요.</p>}</div></div>
   </form>;
 }

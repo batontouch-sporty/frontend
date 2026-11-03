@@ -74,6 +74,7 @@
 .detail-action-error { margin-top: 12px; }
 .detail-action-error button { min-height: 44px; margin-top: 4px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-button); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
 .detail-action-note { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
+.detail-deposit-note { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 
 .detail-feedback { margin-top: 16px; padding: 64px 24px; text-align: center; }
 .detail-feedback h1 { margin: 16px 0 8px; font-size: 22px; font-weight: 700; }

@@ -192,7 +192,7 @@ test('joins once while pending and refreshes membership on success', async () =>
   const button = await screen.findByRole('button', { name: '참가 신청하기' });
   fireEvent.click(button); fireEvent.click(button);
   expect(joinMatch).toHaveBeenCalledTimes(1);
-  expect(joinMatch).toHaveBeenCalledWith(101);
+  expect(joinMatch).toHaveBeenCalledWith(101, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   expect(button).toBeDisabled();
   await act(async () => finish({ matchId: 101 }));
   expect(window.alert).toHaveBeenCalledWith('참가 신청이 완료됐어요.');
@@ -415,7 +415,7 @@ test('leaves once, then reloads the participant list and count without deleting 
   expect(window.alert).not.toHaveBeenCalled();
   await act(async () => finish());
   expect(await screen.findByRole('button', { name: '참가 신청하기' })).toBeEnabled();
-  expect(window.alert).toHaveBeenCalledWith('매치에서 탈퇴했어요.');
+  expect(window.alert).toHaveBeenCalledWith('매치에서 탈퇴했어요. 보증 포인트는 곧 반환돼요.');
   expect(screen.getByText('1명 참여 중')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: '참가자이름' })).not.toBeInTheDocument();
   expect(screen.getByRole('heading', { name: match.title })).toBeInTheDocument();
@@ -459,7 +459,7 @@ test('reloads membership when the participation record is already gone', async (
   fireEvent.click(await screen.findByRole('button', { name: '매치 탈퇴하기' }));
   expect(await screen.findByRole('button', { name: '참가 신청하기' })).toBeEnabled();
   expect(window.alert).toHaveBeenCalledWith('매치 참가 정보를 확인할 수 없어요. 현재 상태를 다시 불러올게요.');
-  expect(window.alert).not.toHaveBeenCalledWith('매치에서 탈퇴했어요.');
+  expect(window.alert).not.toHaveBeenCalledWith('매치에서 탈퇴했어요. 보증 포인트는 곧 반환돼요.');
   expect(screen.queryByText('홈 화면')).not.toBeInTheDocument();
 });
 
@@ -509,7 +509,7 @@ test('retries only the detail request when refreshing after leave fails', async 
   showPage();
   fireEvent.click(await screen.findByRole('button', { name: '매치 탈퇴하기' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('매치 정보를 불러오지 못했어요');
-  expect(window.alert).toHaveBeenCalledWith('매치에서 탈퇴했어요.');
+  expect(window.alert).toHaveBeenCalledWith('매치에서 탈퇴했어요. 보증 포인트는 곧 반환돼요.');
   fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
   expect(await screen.findByRole('button', { name: '참가 신청하기' })).toBeEnabled();
   expect(leaveMatch).toHaveBeenCalledTimes(1);
@@ -552,7 +552,7 @@ test('leaving stays put when the confirmation is cancelled', async () => {
   window.confirm.mockReturnValueOnce(false);
   showPage();
   fireEvent.click(await screen.findByRole('button', { name: '매치 탈퇴하기' }));
-  expect(window.confirm).toHaveBeenCalledWith('이 매치에서 탈퇴할까요?');
+  expect(window.confirm).toHaveBeenCalledWith('이 매치에서 탈퇴할까요? 시작 전 취소라 보증 포인트 10점은 돌려받아요.');
   expect(leaveMatch).not.toHaveBeenCalled();
 });
 
@@ -572,4 +572,66 @@ test('offers waitlist registration on the routed full future match detail', asyn
   expect(await screen.findByRole('button', { name: '대기 신청하기' })).toBeEnabled();
   expect(screen.getByRole('button', { name: '대기 취소하기' })).toBeEnabled();
   expect(screen.getByRole('region', { name: '참가 대기' })).toBeInTheDocument();
+});
+
+test('explains the deposit policy before joining and before leaving', async () => {
+  getMatchDetail.mockResolvedValueOnce(match);
+  const { unmount } = showPage();
+  expect(await screen.findByText(/참가 신청 시 보증 포인트 10점이 차감돼요/)).toHaveTextContent('노쇼하면 돌려받지 못해요');
+  unmount();
+  getMatchDetail.mockResolvedValueOnce({ ...match, isParticipant: true });
+  showPage();
+  expect(await screen.findByText('시작 전에 탈퇴하면 보증 포인트 10점을 돌려받아요.')).toBeInTheDocument();
+});
+
+test('shows the deposit check while an accepted join is pending', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValueOnce(match).mockResolvedValueOnce({ ...match, isParticipant: true });
+  let finish;
+  joinMatch.mockImplementation((id, { onPending }) => { onPending(); return new Promise(resolve => { finish = resolve; }); });
+  showPage();
+  fireEvent.click(await screen.findByRole('button', { name: '참가 신청하기' }));
+  expect(await screen.findByText(/보증 포인트 차감을 확인하고 있어요/)).toHaveAttribute('role', 'status');
+  expect(screen.getByRole('button', { name: '참가 신청 중…' })).toBeDisabled();
+  await act(async () => finish({ requestId: 'r-1', matchId: 101, status: 'PENDING' }));
+  expect(window.alert).toHaveBeenCalledWith('참가 신청이 완료됐어요.');
+  expect(await screen.findByRole('button', { name: '매치 탈퇴하기' })).toBeEnabled();
+});
+
+test('keeps the page and explains a failed deposit request with its refund state', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(match);
+  const failure = Object.assign(new Error('모집이 마감되었거나 정원이 차서 확정하지 못했어요. 차감된 보증 포인트는 반환 처리 중이에요.'),
+    { depositRequest: { status: 'CANCELLED', failureCode: 'CONFIRMATION_FAILED', refundStatus: 'PENDING' } });
+  joinMatch.mockImplementation((id, { onPending }) => { onPending(); return Promise.reject(failure); });
+  showPage();
+  fireEvent.click(await screen.findByRole('button', { name: '참가 신청하기' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('반환 처리 중이에요');
+  expect(screen.queryByText(/보증 포인트 차감을 확인하고 있어요/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '참가 신청하기' })).toBeEnabled();
+  expect(window.alert).not.toHaveBeenCalled();
+});
+
+test.each([
+  [400, 'INSUFFICIENT_POINTS', '보증 포인트가 부족해요. 10점 이상 있어야 신청할 수 있어요.'],
+  [403, 'PARTICIPATION_SUSPENDED', '노쇼로 참여가 정지된 상태예요. 정지 기간이 끝난 뒤 다시 신청해 주세요.'],
+  [409, 'PARTICIPATION_IN_PROGRESS', '이 매치에 보낸 요청을 아직 처리하고 있어요. 잠시 후 결과를 확인해 주세요.'],
+])('shows a distinct message for join error %s / %s', async (status, code, message) => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(match);
+  joinMatch.mockRejectedValue({ response: { status, data: { code } } });
+  showPage();
+  fireEvent.click(await screen.findByRole('button', { name: '참가 신청하기' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  expect(getMatchDetail).toHaveBeenCalledTimes(1);
+});
+
+test('refreshes when leaving after the match has started', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue({ ...match, isParticipant: true });
+  leaveMatch.mockRejectedValue({ response: { status: 400, data: { code: 'MATCH_ALREADY_STARTED' } } });
+  showPage();
+  fireEvent.click(await screen.findByRole('button', { name: '매치 탈퇴하기' }));
+  await waitFor(() => expect(window.alert).toHaveBeenCalledWith('이미 시작된 매치는 취소할 수 없어요.'));
+  await waitFor(() => expect(getMatchDetail).toHaveBeenCalledTimes(2));
 });

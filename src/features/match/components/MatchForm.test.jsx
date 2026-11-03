@@ -174,7 +174,7 @@ test('loads an AI draft and submits the user-edited gender', async () => {
   expect(select).toHaveValue('FEMALE');
   fireEvent.change(select, { target: { value: 'MALE' } });
   fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
-  await waitFor(() => expect(createMatch).toHaveBeenCalledWith({ ...match, genderGroup: 'MALE' }));
+  await waitFor(() => expect(createMatch).toHaveBeenCalledWith({ ...match, genderGroup: 'MALE' }, expect.objectContaining({ signal: expect.any(AbortSignal) })));
   expect(await screen.findByTestId('location')).toHaveTextContent('/matches/42');
 });
 
@@ -189,4 +189,37 @@ test.each([201, 401])('handles creation result %s with the correct redirect', as
   fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
   expect(await screen.findByTestId('location')).toHaveTextContent(status === 201 ? '/matches/42' : '/login?redirect=%2Fmatches%2Fnew');
   if (status === 401) expect(localStorage.getItem('at')).toBeNull();
+});
+
+function fillRequired() {
+  for (const [label, value] of [['경기 날짜', '2026-09-26'], ['시작 시간', '19:00'], ['종료 시간', '21:00'], ['매치 제목', match.title], ['상세 안내 및 매너 수칙', match.description]]) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+}
+
+test('explains the creation deposit and shows the pending check before moving to the match', async () => {
+  localStorage.setItem('at', 'test-token');
+  let finish;
+  createMatch.mockImplementation((payload, { onPending }) => { onPending(); return new Promise(resolve => { finish = resolve; }); });
+  renderRoute();
+  expect(screen.getByText(/개설이 확정되기 전에 보증 포인트 10점이 차감돼요/)).toBeInTheDocument();
+  fillRequired();
+  fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
+  expect(await screen.findByText(/보증 포인트 차감을 확인하고 있어요/)).toHaveAttribute('role', 'status');
+  finish(42);
+  expect(await screen.findByTestId('location')).toHaveTextContent('/matches/42');
+});
+
+test.each([
+  [Object.assign(new Error('처리 시간이 지나 요청이 취소됐어요. 다시 신청해 주세요.'), { depositRequest: { status: 'CANCELLED' } }), '처리 시간이 지나 요청이 취소됐어요.'],
+  [{ response: { status: 403, data: { code: 'PARTICIPATION_SUSPENDED' } } }, '노쇼로 참여가 정지된 상태예요.'],
+  [{ response: { status: 400, data: { code: 'INSUFFICIENT_POINTS' } } }, '보증 포인트가 부족해요.'],
+])('keeps the form and explains a deposit failure %#', async (error, message) => {
+  localStorage.setItem('at', 'test-token');
+  createMatch.mockRejectedValue(error);
+  renderRoute();
+  fillRequired();
+  fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
+  expect(await screen.findByText(message, { exact: false })).toHaveClass('match-submit-error');
+  expect(screen.getByRole('button', { name: '매치 개설 완료하기' })).toBeEnabled();
 });

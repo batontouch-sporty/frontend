@@ -77,3 +77,19 @@ test('preview IDs cannot reach the API', async () => {
   await expect(requestMatchParticipation('preview-1')).rejects.toThrow('매치 번호');
   expect(api.post).not.toHaveBeenCalled();
 });
+
+test('waits for an accepted list participation and explains deposit failures', async () => {
+  const requestId = '5f1e2d3c-4b5a-4968-8776-655443322110';
+  api.post.mockResolvedValue({ status: 202, data: { requestId, matchId: 1, status: 'PENDING' } });
+  api.get.mockResolvedValue({ data: { requestId, matchId: 1, requestType: 'JOIN', status: 'FAILED', failureCode: 'INSUFFICIENT_POINTS', refundStatus: 'NOT_REQUIRED' } });
+  const error = await requestMatchParticipation(1, { delays: [0] }).catch(caught => caught);
+  expect(matchRequestError(error, 'join')).toBe('보증 포인트가 부족해요. 10점 이상 있어야 신청할 수 있어요.');
+});
+
+test.each([
+  [403, 'PARTICIPATION_SUSPENDED', '노쇼로 참여가 정지된 상태예요'],
+  [409, 'PARTICIPATION_IN_PROGRESS', '아직 처리하고 있어요'],
+  [400, 'INSUFFICIENT_POINTS', '보증 포인트가 부족해요'],
+])('shows a distinct join message for %s %s', (status, code, message) => {
+  expect(matchRequestError({ response: { status, data: { code } } }, 'join')).toContain(message);
+});
