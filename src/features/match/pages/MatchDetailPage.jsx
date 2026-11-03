@@ -332,7 +332,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const schedule = `${dateLabel(match.startAt)} ${timeLabel(match.startAt)} — ${match.startAt?.slice(0, 10) !== match.endAt?.slice(0, 10) ? `${dateLabel(match.endAt)} ` : ''}${timeLabel(match.endAt)}`;
   // 출석은 시작 시각 이상, 종료 시각 미만에만 바꿀 수 있다. 서버 LocalDateTime과 같은 분 단위로 비교한다.
   const now = localDateTime().slice(0, 16);
-  const attendancePhase = match.isOwner !== true || !match.startAt || !match.endAt ? null
+  const attendancePhase = match.status === 'CANCELLED' || match.isOwner !== true || !match.startAt || !match.endAt ? null
     : now < match.startAt.slice(0, 16) ? 'before' : now < match.endAt.slice(0, 16) ? 'open' : 'closed';
   const attendanceNote = { before: '시작 후 노쇼를 체크할 수 있어요.', open: '노쇼한 참가자를 체크해 주세요. 체크하지 않으면 출석으로 확정돼요.', closed: '출석이 확정됐어요.' }[attendancePhase];
   let actionLabel = '참가 신청하기';
