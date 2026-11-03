@@ -1,0 +1,38 @@
+# 공식 nginx 이미지가 시작할 때 envsubst로 ${GATEWAY_UPSTREAM}만 채운다.
+# upstream 주소는 시작 시점에 이름 해석되므로 Gateway 서비스 이름이 DNS에 있어야 한다.
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    # 서비스 API(/<서비스명>/**)와 관리자 대시보드의 Prometheus 조회는 경로 그대로 Gateway로 넘긴다.
+    location ~ ^/((user|match|facility|ai|notification)-service|prometheus)/ {
+        proxy_pass http://${GATEWAY_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Authorization $http_authorization;
+        # AI 응답을 기다릴 수 있게 읽기 타임아웃을 60초로 둔다.
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # CRA 빌드 결과는 파일명에 해시가 붙어 오래 캐시해도 된다.
+    location /static/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    # SPA 새로고침: 없는 경로는 index.html로 돌려 React Router가 처리한다.
+    location / {
+        try_files $uri /index.html;
+    }
+}
