@@ -53,12 +53,9 @@ export async function joinMatch(matchId, options) {
 }
 
 // [A11 출석] 방장이 진행 중(시작 이상·종료 미만)인 매치의 참가자 출석을 바꾼다.
-export async function updateAttendance(matchId, participantId, attendance) {
-  const { data } = await api.patch(`/api/matches/${matchId}/participants/${participantId}/attendance`, { attendance });
-  if (data?.participantId !== participantId || data.attendance !== attendance) {
-    throw new Error('출석 변경 결과를 확인할 수 없어요. 새로고침해주세요.');
-  }
-  return data;
+export async function updateAttendance(matchId, participantId, matchParticipantStatus) {
+  const response = await api.patch(`/api/matches/${matchId}/participants/${participantId}/attendance`, { matchParticipantStatus });
+  if (response.status !== 204) throw new Error('출석 변경 결과를 확인할 수 없어요. 새로고침해주세요.');
 }
 
 export async function leaveMatch(matchId) {

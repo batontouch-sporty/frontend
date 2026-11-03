@@ -57,15 +57,15 @@ function Avatar({ participant }) {
 
 const ATTENDANCE_LABELS = { ATTENDED: '출석', NO_SHOW: '노쇼' };
 
-// [출석] 방장 화면에서만 attendance 값이 온다. 진행 중이면 토글, 종료 후에는 확정 값만 보여 준다.
+// [출석] 방장 화면에서만 matchParticipantStatus 값이 온다. 진행 중이면 토글, 종료 후에는 확정 값만 보여 준다.
 function AttendanceControl({ participant, phase, disabled, onChange }) {
-  if (!Number.isSafeInteger(participant.participantId) || !ATTENDANCE_LABELS[participant.attendance]) return null;
-  if (phase === 'closed') return <span className="detail-attendance-final">{ATTENDANCE_LABELS[participant.attendance]}</span>;
+  if (!Number.isSafeInteger(participant.participantId) || !ATTENDANCE_LABELS[participant.matchParticipantStatus]) return null;
+  if (phase === 'closed') return <span className="detail-attendance-final">{ATTENDANCE_LABELS[participant.matchParticipantStatus]}</span>;
   if (phase !== 'open') return null;
   const name = participant.nickname || '참가자';
   return <div className="detail-attendance" role="group" aria-label={`${name} 출석 체크`}>
     {Object.entries(ATTENDANCE_LABELS).map(([value, label]) => <button key={value} type="button"
-      className={participant.attendance === value ? 'is-selected' : undefined} aria-pressed={participant.attendance === value}
+      className={participant.matchParticipantStatus === value ? 'is-selected' : undefined} aria-pressed={participant.matchParticipantStatus === value}
       disabled={disabled} onClick={() => onChange(participant, value)}>{label}</button>)}
   </div>;
 }
@@ -223,7 +223,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   }
 
   async function handleAttendance(person, attendance) {
-    if (preview || busy.current || person.attendance === attendance) return;
+    if (preview || busy.current || person.matchParticipantStatus === attendance) return;
     if (attendance === 'NO_SHOW' && !window.confirm(`노쇼로 체크하면 이 참가자의 보증 포인트 ${DEPOSIT_POINTS}점은 반환되지 않아요. 노쇼로 체크할까요?`)) return;
     busy.current = true; setPending('attendance'); setActionError('');
     try {
@@ -240,9 +240,9 @@ function MatchDetailContent({ match, preview, onRefresh }) {
         return;
       }
       const reasons = {
-        ATTENDANCE_NOT_EDITABLE: '지금은 출석을 바꿀 수 없어요.',
+        ATTENDANCE_UPDATE_NOT_ALLOWED: '지금은 출석을 바꿀 수 없어요.',
         FORBIDDEN: '출석을 바꿀 권한이 없어요.',
-        PARTICIPANT_NOT_FOUND: '참가자 정보를 찾을 수 없어요. 현재 상태를 다시 불러올게요.',
+        MATCH_PARTICIPANT_NOT_FOUND: '참가자 정보를 찾을 수 없어요. 현재 상태를 다시 불러올게요.',
       };
       if (reasons[code]) {
         window.alert(reasons[code]);

@@ -638,11 +638,11 @@ test('refreshes when leaving after the match has started', async () => {
 });
 
 const hoursFromNow = hours => localDateTime(new Date(Date.now() + hours * 3600000));
-const ownerMatch = (startAt, endAt, attendance = 'ATTENDED') => ({
+const ownerMatch = (startAt, endAt, status = 'ATTENDED') => ({
   ...match, isOwner: true, startAt, endAt,
   participants: [
-    { profileId: 11, participantId: 1, nickname: '생성자', role: 'OWNER', attendance: 'ATTENDED' },
-    { profileId: 12, participantId: 2, nickname: '참가자이름', role: 'PARTICIPANT', attendance },
+    { profileId: 11, participantId: 1, nickname: '생성자', role: 'OWNER', matchParticipantStatus: 'ATTENDED' },
+    { profileId: 12, participantId: 2, nickname: '참가자이름', role: 'PARTICIPANT', matchParticipantStatus: status },
   ],
 });
 
@@ -650,7 +650,7 @@ test('lets the owner mark a no-show during the match and refreshes after saving'
   localStorage.setItem('at', 'token');
   const live = ownerMatch(hoursFromNow(-1), hoursFromNow(1));
   getMatchDetail.mockResolvedValueOnce(live).mockResolvedValueOnce(ownerMatch(live.startAt, live.endAt, 'NO_SHOW'));
-  updateAttendance.mockResolvedValue({ participantId: 2, userId: 9, attendance: 'NO_SHOW' });
+  updateAttendance.mockResolvedValue(undefined);
   showPage();
   const row = await screen.findByRole('group', { name: '참가자이름 출석 체크' });
   expect(screen.getByRole('group', { name: '생성자 출석 체크' })).toBeInTheDocument();
@@ -676,7 +676,7 @@ test('does not save a no-show when the owner cancels the confirmation', async ()
 test('explains a closed attendance window from the server', async () => {
   localStorage.setItem('at', 'token');
   getMatchDetail.mockResolvedValue(ownerMatch(hoursFromNow(-1), hoursFromNow(1), 'NO_SHOW'));
-  updateAttendance.mockRejectedValue({ response: { status: 400, data: { code: 'ATTENDANCE_NOT_EDITABLE' } } });
+  updateAttendance.mockRejectedValue({ response: { status: 409, data: { code: 'ATTENDANCE_UPDATE_NOT_ALLOWED' } } });
   showPage();
   const row = await screen.findByRole('group', { name: '참가자이름 출석 체크' });
   fireEvent.click(within(row).getByRole('button', { name: '출석' }));
@@ -703,4 +703,16 @@ test('hides attendance controls from participants', async () => {
   await screen.findByRole('heading', { name: match.title });
   expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
   expect(screen.queryByText(/노쇼를 체크/)).not.toBeInTheDocument();
+});
+
+test('reloads when the participant is no longer found', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(ownerMatch(hoursFromNow(-1), hoursFromNow(1)));
+  updateAttendance.mockRejectedValue({ response: { status: 404, data: { code: 'MATCH_PARTICIPANT_NOT_FOUND' } } });
+  showPage();
+  const row = await screen.findByRole('group', { name: '참가자이름 출석 체크' });
+  fireEvent.click(within(row).getByRole('button', { name: '노쇼' }));
+  await waitFor(() => expect(window.alert).toHaveBeenCalledWith('참가자 정보를 찾을 수 없어요. 현재 상태를 다시 불러올게요.'));
+  await waitFor(() => expect(getMatchDetail).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText('홈 화면')).not.toBeInTheDocument();
 });

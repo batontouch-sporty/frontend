@@ -139,10 +139,10 @@ test('sends documented facility filters and normalizes the response', async () =
   expect(api.get).toHaveBeenCalledWith('/api/services', { params: { serviceName: '풋살', region: '서초구' } });
 });
 
-test('patches one participant attendance and checks the echoed value', async () => {
-  api.patch.mockResolvedValue({ data: { participantId: 5, userId: 9, attendance: 'NO_SHOW' } });
-  await expect(updateAttendance(101, 5, 'NO_SHOW')).resolves.toEqual({ participantId: 5, userId: 9, attendance: 'NO_SHOW' });
-  expect(api.patch).toHaveBeenCalledWith('/api/matches/101/participants/5/attendance', { attendance: 'NO_SHOW' });
-  api.patch.mockResolvedValue({ data: { participantId: 5, attendance: 'ATTENDED' } });
+test('patches one participant status and requires an empty 204', async () => {
+  api.patch.mockResolvedValue({ status: 204, data: '' });
+  await expect(updateAttendance(101, 5, 'NO_SHOW')).resolves.toBeUndefined();
+  expect(api.patch).toHaveBeenCalledWith('/api/matches/101/participants/5/attendance', { matchParticipantStatus: 'NO_SHOW' });
+  api.patch.mockResolvedValue({ status: 200, data: '<html>frontend fallback</html>' });
   await expect(updateAttendance(101, 5, 'NO_SHOW')).rejects.toThrow('출석 변경 결과');
 });
