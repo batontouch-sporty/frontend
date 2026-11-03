@@ -9,6 +9,9 @@ const REASONS = {
   REQUEST_CANCELLED: '처리 시간이 지나 요청이 취소됐어요. 다시 신청해 주세요.',
   USER_NOT_ACTIVE: '현재 계정 상태로는 신청할 수 없어요.',
   CONFIRMATION_FAILED: '모집이 마감되었거나 정원이 차서 확정하지 못했어요.',
+  // 아래 두 사유는 반환 문구를 refundStatus(REFUNDS)에서 붙인다.
+  PARTICIPANT_CANCELLED: '참가를 취소한 요청이에요.',
+  MATCH_CANCELLED: '매치가 취소됐어요.',
 };
 const REFUNDS = {
   PENDING: ' 차감된 보증 포인트는 반환 처리 중이에요.',

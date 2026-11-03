@@ -102,6 +102,9 @@ test.each([
   [{ status: 'FAILED', failureCode: 'PARTICIPATION_SUSPENDED', refundStatus: 'NOT_REQUIRED' }, '노쇼로 참여가 정지된 상태예요. 정지 기간이 끝난 뒤 다시 신청해 주세요.'],
   [{ status: 'CANCELLED', failureCode: 'CONFIRMATION_FAILED', refundStatus: 'PENDING' }, '모집이 마감되었거나 정원이 차서 확정하지 못했어요. 차감된 보증 포인트는 반환 처리 중이에요.'],
   [{ status: 'CANCELLED', failureCode: null, refundStatus: 'COMPLETED' }, '요청이 확정되지 않았어요. 차감된 보증 포인트는 반환됐어요.'],
+  [{ status: 'CANCELLED', failureCode: 'PARTICIPANT_CANCELLED', refundStatus: 'PENDING' }, '참가를 취소한 요청이에요. 차감된 보증 포인트는 반환 처리 중이에요.'],
+  [{ status: 'CANCELLED', failureCode: 'MATCH_CANCELLED', refundStatus: 'COMPLETED' }, '매치가 취소됐어요. 차감된 보증 포인트는 반환됐어요.'],
+  [{ status: 'CANCELLED', failureCode: 'MATCH_CANCELLED', refundStatus: 'NOT_REQUIRED' }, '매치가 취소됐어요.'],
 ])('explains a finished request %p with its refund state', async (result, message) => {
   api.get.mockResolvedValue({ data: { ...pending, requestType: 'JOIN', ...result } });
   const error = await waitForMatchRequest(requestId, { delays: [0] }).catch(caught => caught);
