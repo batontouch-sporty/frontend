@@ -697,6 +697,16 @@ test.each([
   else expect(screen.queryByText('노쇼')).not.toBeInTheDocument();
 });
 
+test('hides attendance controls and guidance for the owner of a cancelled match during its scheduled time', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue({ ...ownerMatch(hoursFromNow(-1), hoursFromNow(1)), status: 'CANCELLED' });
+  showPage();
+  expect(await screen.findByRole('heading', { name: match.title })).toBeInTheDocument();
+  expect(screen.getByText('참가자이름')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/노쇼한 참가자를 체크해 주세요/)).not.toBeInTheDocument();
+});
+
 test('hides attendance controls from participants', async () => {
   getMatchDetail.mockResolvedValue({ ...ownerMatch(hoursFromNow(-1), hoursFromNow(1)), isOwner: false, isParticipant: true });
   showPage();
