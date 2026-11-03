@@ -223,3 +223,34 @@ test.each([
   expect(await screen.findByText(message, { exact: false })).toHaveClass('match-submit-error');
   expect(screen.getByRole('button', { name: '매치 개설 완료하기' })).toBeEnabled();
 });
+
+test('shows AI facility candidates and submits the chosen one', async () => {
+  localStorage.setItem('at', 'test-token');
+  createMatch.mockResolvedValue(42);
+  const candidates = [
+    { serviceId: 304, name: '광나루 농구장4', region: '송파구', locationName: '광나루 농구장' },
+    { serviceId: 317, name: '잠실 농구장', region: '송파구', locationName: '잠실 농구장' },
+  ];
+  renderRoute({ aiDraft: { initialValues: match, facilityCandidates: candidates } });
+  const section = screen.getByRole('region', { name: 'AI 추천 시설' });
+  expect(section).toHaveTextContent('광나루 농구장4');
+  fireEvent.click(screen.getByRole('button', { name: /잠실 농구장/ }));
+  expect(screen.queryByRole('region', { name: 'AI 추천 시설' })).not.toBeInTheDocument();
+  expect(screen.getByText('선택한 시설')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
+  await waitFor(() => expect(createMatch).toHaveBeenCalledWith({ ...match, serviceId: 317 }, expect.objectContaining({ signal: expect.any(AbortSignal) })));
+});
+
+test('does not show AI candidates when a facility was already chosen', () => {
+  localStorage.setItem('at', 'test-token');
+  renderRoute({ facility, aiDraft: { initialValues: match, facilityCandidates: [{ serviceId: 304, name: '광나루 농구장4', region: '송파구', locationName: '' }] } });
+  expect(screen.queryByRole('region', { name: 'AI 추천 시설' })).not.toBeInTheDocument();
+  expect(screen.getByText('서초 풋살장')).toBeInTheDocument();
+});
+
+test('AI candidates come back after clearing the selected facility', () => {
+  render(<MatchForm initialValues={match} facilityCandidates={[{ serviceId: 304, name: '광나루 농구장4', region: '송파구', locationName: '' }]} onSubmit={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /광나루 농구장4/ }));
+  fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));
+  expect(screen.getByRole('region', { name: 'AI 추천 시설' })).toBeInTheDocument();
+});
