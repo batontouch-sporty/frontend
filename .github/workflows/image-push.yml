@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 # 커밋마다 따로 실행해 대기 중인 실행이 취소되지 않게 한다(커밋별 <sha7> 이미지 보존).
-# latest는 아래에서 main 최신 커밋일 때만 올려 순서가 뒤집히지 않게 한다.
+# latest는 맨 아래 latest job에서 따로 한 줄로 세워 갱신한다.
 concurrency:
   group: image-push-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
@@ -21,6 +21,8 @@ jobs:
     name: 이미지 빌드 · push
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
 
     steps:
       - name: Docker Hub 설정 확인
@@ -55,17 +57,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: main 최신 커밋인지 확인
-        id: head
-        if: steps.check.outputs.enabled == 'true'
-        run: |
-          if [ "$GITHUB_REF" = refs/heads/main ] && [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "latest=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # latest는 main 최신 커밋일 때만 올린다. 다른 브랜치나 이미 지난 커밋은 <sha7>만 올린다.
+      # 여기서는 <sha7>만 올린다. latest는 아래 latest job이 갱신한다.
       - name: 빌드 · push
         if: steps.check.outputs.enabled == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -73,6 +65,39 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-frontend:${{ steps.tag.outputs.sha }}
-            ${{ steps.head.outputs.latest == 'true' && format('{0}/sporty-frontend:latest', vars.DOCKERHUB_NAMESPACE) || '' }}
+          tags: ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-frontend:${{ steps.tag.outputs.sha }}
+
+  # latest는 main에서만, 커밋 실행들을 한 줄로 세워 갱신한다. 새 커밋의 latest job이 들어오면 이전 것은 취소된다.
+  # 다시 빌드하지 않고 이미 올린 <sha7> 이미지에 latest 태그만 붙이며, 붙이기 직전에 이 커밋이 main 최신인지 확인한다.
+  latest:
+    name: latest 태그 갱신
+    needs: push
+    if: github.ref == 'refs/heads/main' && needs.push.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: image-latest-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Docker Hub 로그인
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: main 최신 커밋일 때만 latest 태그
+        env:
+          NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # 조회 실패는 건너뛰지 않고 job을 실패시킨다.
+          head="$(git ls-remote "$REPO_URL" refs/heads/main | cut -f1)"
+          [ -n "$head" ] || { echo "::error::main HEAD 조회 실패"; exit 1; }
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::notice::main이 ${head::7}로 앞서 있어 latest를 갱신하지 않습니다."
+            exit 0
+          fi
+          docker buildx imagetools create -t "$NAMESPACE/sporty-frontend:latest" "$NAMESPACE/sporty-frontend:${GITHUB_SHA::7}"
