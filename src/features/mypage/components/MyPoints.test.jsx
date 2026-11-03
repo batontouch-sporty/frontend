@@ -59,6 +59,30 @@ test('조회 실패는 다시 시도하고 401은 로그인으로 넘긴다', as
   await waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1));
 });
 
+test('이력만 실패하면 잔액은 보여 주고 이력 영역에만 오류를 띄운다', async () => {
+  api.get.mockImplementation(url => (url === '/api/users/me/points'
+    ? Promise.resolve({ data: { points: 30, attendanceRewardCount: 1, participationSuspended: false, suspendedUntil: null } })
+    : Promise.reject({ response: { status: 500 } })));
+  showPoints();
+  expect(await screen.findByText('30점')).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('포인트 이력을 불러오지 못했어요.');
+  expect(screen.queryByText('포인트 정보를 불러오지 못했어요.')).not.toBeInTheDocument();
+  expect(screen.queryByText('포인트 이력이 없어요.')).not.toBeInTheDocument();
+  respond({ points: 30, attendanceRewardCount: 1, participationSuspended: false, suspendedUntil: null },
+    { content: [entry(1, 'SIGNUP', 50, 50)], page: 0, size: 20, totalElements: 1, totalPages: 1 });
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+  expect(await screen.findByText('가입 축하 포인트')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+test('잔액 조회가 실패하면 이력 응답을 기다리지 않고 오류를 먼저 보여 준다', async () => {
+  api.get.mockImplementation(url => (url === '/api/users/me/points' ? Promise.reject({ response: { status: 500 } }) : new Promise(() => {})));
+  showPoints();
+  expect(await screen.findByRole('alert')).toHaveTextContent('포인트 정보를 불러오지 못했어요.');
+  expect(screen.queryByText('포인트 정보를 불러오는 중이에요.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
+});
+
 test('미리보기에서는 포인트를 조회하지 않는다', () => {
   render(<MyPoints onUnauthorized={jest.fn()} />);
   expect(screen.getByText('미리보기에서는 포인트를 조회하지 않아요.')).toBeInTheDocument();

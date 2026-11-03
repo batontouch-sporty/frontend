@@ -24,7 +24,7 @@ const match = {
 
 beforeEach(() => jest.spyOn(window, 'alert').mockImplementation(() => {}));
 beforeEach(() => jest.spyOn(window, 'confirm').mockReturnValue(true));
-afterEach(() => { jest.resetAllMocks(); jest.restoreAllMocks(); localStorage.clear(); });
+afterEach(() => { jest.useRealTimers(); jest.resetAllMocks(); jest.restoreAllMocks(); localStorage.clear(); });
 
 function LoginDestination() {
   const location = useLocation();
@@ -695,6 +695,84 @@ test.each([
   expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
   if (when === 'after') expect(screen.getByText('노쇼')).toHaveClass('detail-attendance-final');
   else expect(screen.queryByText('노쇼')).not.toBeInTheDocument();
+});
+
+const atNineFiftyNine = () => { jest.useFakeTimers(); jest.setSystemTime(new Date(2026, 10, 3, 9, 59, 30)); };
+const deferred = () => { let resolve; let reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };
+
+test('quietly reloads the detail on the start and end times so attendance and participants stay current', async () => {
+  atNineFiftyNine();
+  localStorage.setItem('at', 'token');
+  const before = ownerMatch('2026-11-03T10:00:00', '2026-11-03T12:00:00');
+  const joinedLate = { profileId: 13, participantId: 3, nickname: '늦은참가자', role: 'PARTICIPANT', matchParticipantStatus: 'ATTENDED' };
+  const reload = deferred();
+  getMatchDetail.mockResolvedValueOnce(before).mockReturnValueOnce(reload.promise).mockResolvedValue({ ...before, participants: [...before.participants, joinedLate] });
+  showPage();
+  expect(await screen.findByText('시작 후 노쇼를 체크할 수 있어요.')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  act(() => jest.advanceTimersByTime(25000));
+  expect(getMatchDetail).toHaveBeenCalledTimes(1);
+  act(() => jest.advanceTimersByTime(5000));
+  expect(getMatchDetail).toHaveBeenCalledTimes(2);
+  expect(getMatchDetail).toHaveBeenLastCalledWith('101', expect.any(AbortSignal));
+  // 재조회 중에도 스피너 없이 기존 화면을 두고 출석 단계는 바로 바뀐다.
+  expect(screen.queryByText('매치 정보를 불러오는 중이에요')).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: '참가자이름 출석 체크' })).toBeInTheDocument();
+  await act(async () => reload.resolve({ ...before, participants: [...before.participants, joinedLate] }));
+  expect(screen.getByRole('group', { name: '늦은참가자 출석 체크' })).toBeInTheDocument();
+  await act(async () => jest.advanceTimersByTime(2 * 3600000));
+  expect(screen.getByText('출석이 확정됐어요.')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  expect(getMatchDetail).toHaveBeenCalledTimes(3);
+});
+
+test('keeps the start-time reload when a rerender moves the phase before the timer runs', async () => {
+  atNineFiftyNine();
+  localStorage.setItem('at', 'token');
+  const deletion = deferred();
+  deleteMatch.mockReturnValue(deletion.promise);
+  getMatchDetail.mockResolvedValue(ownerMatch('2026-11-03T10:00:00', '2026-11-03T12:00:00'));
+  showPage();
+  await screen.findByText('시작 후 노쇼를 체크할 수 있어요.');
+  // 시작 시각이 지났지만 타이머가 아직 돌지 않은 상태에서 다른 상태 변경으로 다시 렌더링된다.
+  jest.setSystemTime(new Date(2026, 10, 3, 10, 0, 10));
+  fireEvent.click(screen.getByRole('button', { name: '매치 삭제하기' }));
+  act(() => jest.advanceTimersByTime(0));
+  expect(getMatchDetail).toHaveBeenCalledTimes(1);
+  await act(async () => deletion.reject({ response: { status: 500 } }));
+  await waitFor(() => expect(getMatchDetail).toHaveBeenCalledTimes(2));
+});
+
+test('defers the boundary reload until an attendance update finishes and reloads once', async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date(2026, 10, 3, 11, 59, 30));
+  localStorage.setItem('at', 'token');
+  const update = deferred();
+  updateAttendance.mockReturnValue(update.promise);
+  getMatchDetail.mockResolvedValue(ownerMatch('2026-11-03T10:00:00', '2026-11-03T12:00:00'));
+  showPage();
+  const row = await screen.findByRole('group', { name: '참가자이름 출석 체크' });
+  fireEvent.click(within(row).getByRole('button', { name: '노쇼' }));
+  act(() => jest.advanceTimersByTime(30000));
+  expect(getMatchDetail).toHaveBeenCalledTimes(1);
+  await act(async () => update.reject({ response: { status: 500 } }));
+  expect(screen.getByRole('alert')).toHaveTextContent('출석 변경 결과를 확인하지 못했어요');
+  await waitFor(() => expect(getMatchDetail).toHaveBeenCalledTimes(2));
+  act(() => jest.advanceTimersByTime(60000));
+  expect(getMatchDetail).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('출석이 확정됐어요.')).toBeInTheDocument();
+});
+
+test('does not reload at the start time after leaving the detail page', async () => {
+  atNineFiftyNine();
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(ownerMatch('2026-11-03T10:00:00', '2026-11-03T12:00:00'));
+  const { unmount } = showPage();
+  await screen.findByText('시작 후 노쇼를 체크할 수 있어요.');
+  unmount();
+  act(() => jest.advanceTimersByTime(60000));
+  expect(getMatchDetail).toHaveBeenCalledTimes(1);
+  expect(jest.getTimerCount()).toBe(0);
 });
 
 test('hides attendance controls and guidance for the owner of a cancelled match during its scheduled time', async () => {

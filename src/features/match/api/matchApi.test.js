@@ -1,5 +1,5 @@
 import api from '../../../api/axios';
-import { createMatch, searchMatchFacilities, getMatchDetail, modifyMatch, joinMatch, leaveMatch, deleteMatch, waitForMatchRequest, REQUEST_POLL_DELAYS, updateAttendance } from './matchApi';
+import { createMatch, searchMatchFacilities, getMatchDetail, modifyMatch, joinMatch, leaveMatch, deleteMatch, waitForMatchRequest, REQUEST_POLL_DELAYS, REQUEST_POLL_TIMEOUT, updateAttendance } from './matchApi';
 
 jest.mock('../../../api/axios', () => ({ post: jest.fn(), get: jest.fn(), put: jest.fn(), delete: jest.fn(), patch: jest.fn() }));
 afterEach(() => jest.clearAllMocks());
@@ -34,7 +34,7 @@ test('waits for an accepted participation to be confirmed', async () => {
   api.post.mockResolvedValue({ status: 202, data: { requestId: id, matchId: 101, status: 'PENDING' } });
   api.get.mockResolvedValue({ data: { requestId: id, matchId: 101, requestType: 'JOIN', status: 'CONFIRMED', refundStatus: 'NOT_REQUIRED' } });
   await expect(joinMatch(101, { delays: [0] })).resolves.toEqual({ requestId: id, matchId: 101, status: 'PENDING' });
-  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${id}`, { signal: undefined });
+  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${id}`, { signal: undefined, timeout: expect.any(Number) });
 });
 
 test('deletes the match and requires HTTP 204', async () => {
@@ -88,7 +88,7 @@ test('waits for a 202 creation request until it is confirmed', async () => {
   await expect(createMatch({ title: '풋살' }, { onPending, delays: [0, 0, 0] })).resolves.toBe(17);
   expect(onPending).toHaveBeenCalledTimes(1);
   expect(api.get).toHaveBeenCalledTimes(2);
-  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${requestId}`, { signal: undefined });
+  expect(api.get).toHaveBeenCalledWith(`/api/matches/requests/${requestId}`, { signal: undefined, timeout: expect.any(Number) });
 });
 
 test('rejects a 202 response without a request ID', async () => {
@@ -119,13 +119,87 @@ test('stops after the last delay and reports a request that is still pending', a
 });
 
 test('turns a status lookup failure into a guidance error but keeps aborts', async () => {
-  api.get.mockRejectedValue({ response: { status: 404 } });
-  const error = await waitForMatchRequest(requestId, { delays: [0] }).catch(caught => caught);
+  api.get.mockRejectedValue({ response: { status: 404 }, isAxiosError: true });
+  const error = await waitForMatchRequest(requestId, { delays: [0, 0] }).catch(caught => caught);
   expect(error.response).toBeUndefined();
   expect(error.message).toContain('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(1);
   const controller = new AbortController();
   controller.abort();
   await expect(waitForMatchRequest(requestId, { signal: controller.signal, delays: [0] })).rejects.toBe(controller.signal.reason);
+});
+
+test('retries network errors and 5xx on the next delay and returns the confirmed result', async () => {
+  api.get
+    .mockRejectedValueOnce({ response: { status: 503 }, isAxiosError: true })
+    .mockRejectedValueOnce({ isAxiosError: true, code: 'ERR_NETWORK' })
+    .mockResolvedValueOnce({ data: { ...pending, status: 'CONFIRMED' } });
+  await expect(waitForMatchRequest(requestId, { delays: [0, 0, 0, 0] })).resolves.toMatchObject({ status: 'CONFIRMED' });
+  expect(api.get).toHaveBeenCalledTimes(3);
+});
+
+test('gives up after three transient retries', async () => {
+  api.get.mockRejectedValue({ response: { status: 500 }, isAxiosError: true });
+  await expect(waitForMatchRequest(requestId, { delays: [0, 0, 0, 0, 0, 0] })).rejects.toThrow('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(4);
+});
+
+test('reports an unknown result when the last lookup fails transiently', async () => {
+  api.get.mockResolvedValueOnce({ data: pending }).mockRejectedValueOnce({ response: { status: 503 }, isAxiosError: true });
+  await expect(waitForMatchRequest(requestId, { delays: [0, 0] })).rejects.toThrow('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(2);
+});
+
+test('stops polling at the overall deadline including slow responses', async () => {
+  let clock = 0;
+  const now = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  api.get.mockImplementation(() => { clock += 30000; return Promise.reject({ response: { status: 503 }, isAxiosError: true }); });
+  const error = await waitForMatchRequest(requestId, { delays: [0, 0, 0, 0, 0] }).catch(caught => caught);
+  now.mockRestore();
+  expect(error.message).toContain('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(2);
+  expect(REQUEST_POLL_TIMEOUT).toBe(60000);
+});
+
+test('does not poll when the deadline passes while waiting and keeps the pending result', async () => {
+  let clock = 0;
+  const now = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  const timer = jest.spyOn(global, 'setTimeout').mockImplementation((done, ms) => { clock += ms; done(); return 0; });
+  api.get.mockImplementation(() => { clock += 40000; return Promise.resolve({ data: pending }); });
+  const error = await waitForMatchRequest(requestId, { delays: [1000, 30000] }).catch(caught => caught);
+  now.mockRestore(); timer.mockRestore();
+  expect(error.message).toContain('아직 요청을 처리하고 있어요');
+  expect(api.get).toHaveBeenCalledTimes(1);
+});
+
+test('polls through every default delay within the deadline', async () => {
+  let clock = 0;
+  const now = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  const timer = jest.spyOn(global, 'setTimeout').mockImplementation((done, ms) => { clock += ms; done(); return 0; });
+  api.get.mockResolvedValue({ data: pending });
+  const error = await waitForMatchRequest(requestId).catch(caught => caught);
+  now.mockRestore(); timer.mockRestore();
+  expect(error.message).toContain('아직 요청을 처리하고 있어요');
+  expect(api.get).toHaveBeenCalledTimes(REQUEST_POLL_DELAYS.length);
+});
+
+test('gives each status request only the time left before the deadline', async () => {
+  let clock = 0;
+  const now = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  const timer = jest.spyOn(global, 'setTimeout').mockImplementation((done, ms) => { clock += ms; done(); return 0; });
+  const timeouts = [];
+  api.get.mockImplementation((url, config) => { timeouts.push(config.timeout); clock += config.timeout; return Promise.reject({ code: 'ECONNABORTED', isAxiosError: true }); });
+  const error = await waitForMatchRequest(requestId, { delays: [1000, 1000], timeout: 5000 }).catch(caught => caught);
+  now.mockRestore(); timer.mockRestore();
+  expect(timeouts[0]).toBe(4000);
+  expect(api.get).toHaveBeenCalledTimes(1);
+  expect(error.message).toContain('처리 결과를 확인하지 못했어요');
+});
+
+test('stops at once on a malformed status response', async () => {
+  api.get.mockResolvedValue({ data: '<html>frontend fallback</html>' });
+  await expect(waitForMatchRequest(requestId, { delays: [0, 0] })).rejects.toThrow('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(1);
 });
 
 test('uses about one minute of polling by default', () => {

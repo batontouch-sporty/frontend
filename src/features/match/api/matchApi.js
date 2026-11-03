@@ -5,8 +5,9 @@ const REQUEST_STATUSES = ['PENDING', 'CONFIRMED', 'FAILED', 'CANCELLED'];
 // 1초 뒤 첫 조회, 이후 2초 간격으로 약 60초까지 확인한다.
 export const REQUEST_POLL_DELAYS = [1000, ...Array(29).fill(2000)];
 
-export async function getMatchRequest(requestId, signal) {
-  const { data } = await api.get(`/api/matches/requests/${encodeURIComponent(requestId)}`, { signal });
+// timeout(ms)을 주면 응답하지 않는 조회도 그 시간 안에 끝낸다.
+export async function getMatchRequest(requestId, signal, timeout) {
+  const { data } = await api.get(`/api/matches/requests/${encodeURIComponent(requestId)}`, timeout ? { signal, timeout } : { signal });
   if (data?.requestId !== requestId || !REQUEST_STATUSES.includes(data.status)) {
     throw new Error('요청 상태 응답 형식을 확인할 수 없어요.');
   }
@@ -19,21 +20,38 @@ const wait = (ms, signal) => new Promise((resolve, reject) => {
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
 });
 const requestError = result => Object.assign(new Error(requestResultMessage(result)), { depositRequest: result });
+// 네트워크 오류·5xx는 일시 오류로 보고 이 횟수까지 다음 간격에 다시 조회한다. 4xx·형식 오류는 바로 끝낸다.
+const TRANSIENT_RETRIES = 3;
+const isTransient = error => Boolean(error?.isAxiosError) && (!error.response || error.response.status >= 500);
+
+// 응답 시간까지 포함해 시작부터 이 시간이 지나면 더 조회하지 않는다. 기본 지연 합(59초)에 1초 여유를 둬 마지막 조회가 빠지지 않게 한다.
+export const REQUEST_POLL_TIMEOUT = 60000;
 
 // CONFIRMED면 결과를 반환한다. 실패·취소·시간 초과·조회 실패는 안내 문구와 depositRequest를 담은 Error로 던진다.
-export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_POLL_DELAYS } = {}) {
+export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_POLL_DELAYS, timeout = REQUEST_POLL_TIMEOUT } = {}) {
+  const deadline = Date.now() + timeout;
+  let failures = 0;
+  let lastFailed = false;
   for (const delay of delays) {
-    await wait(delay, signal);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await wait(Math.min(delay, remaining), signal);
+    // 기다리는 동안 마감이 지났으면 더 조회하지 않고 지금까지의 상태로 끝낸다.
+    if (Date.now() >= deadline) break;
     let result;
-    try { result = await getMatchRequest(requestId, signal); }
+    // 조회 한 번도 남은 시간 안에 끝내야 전체 마감을 지킨다.
+    try { result = await getMatchRequest(requestId, signal, Math.max(1, deadline - Date.now())); }
     catch (error) {
       if (signal?.aborted) throw error;
+      if (isTransient(error) && failures++ < TRANSIENT_RETRIES) { lastFailed = true; continue; }
       throw requestError({ status: 'UNKNOWN' });
     }
+    lastFailed = false;
     if (result.status === 'CONFIRMED') return result;
     if (result.status !== 'PENDING') throw requestError(result);
   }
-  throw requestError({ status: 'PENDING' });
+  // 마지막 조회가 일시 오류였다면 아직 처리 중인지 알 수 없다.
+  throw requestError({ status: lastFailed ? 'UNKNOWN' : 'PENDING' });
 }
 
 // [A9·A14] 보증금 Saga가 켜진 환경은 202 {requestId, matchId, status:'PENDING'}이고 확정까지 상태를 조회한다.
