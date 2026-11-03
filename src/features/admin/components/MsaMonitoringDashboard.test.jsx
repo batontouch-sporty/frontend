@@ -68,7 +68,7 @@ test('도메인 탭은 선택 기간의 Saga·AI A30과 응답시간 A31을 조�
   for (const query of domainQueries.slice(2)) {
     expect(query).toMatch(/increase\(ai_request_seconds_(count|sum)\{/);
     expect(query).toContain('type=~"search|draft|recommend"');
-    expect(query).toContain('outcome=~"success|fallback|error"}[900s]');
+    expect(query).toContain('outcome=~"success|fallback|rejected|error"}[900s]');
   }
   expect(domainQueries.every(query => query.includes('job="sporty-services"') && query.includes('application='))).toBe(true);
   const aiRanges = queryRange.mock.calls.map(([request]) => request).filter(request => request.query.includes('ai_request'));
@@ -76,12 +76,14 @@ test('도메인 탭은 선택 기간의 Saga·AI A30과 응답시간 A31을 조�
   for (const request of aiRanges) {
     expect(request.query).toMatch(/sum\(rate\(ai_request_seconds_(count|sum)\{/);
     expect(request.query).toContain('type=~"search|draft|recommend"');
-    expect(request.query).toContain('outcome=~"success|fallback|error"}[5m]');
+    expect(request.query).toContain('outcome=~"success|fallback|rejected|error"}[5m]');
     expect(request.query).toContain('job="sporty-services"');
     expect(request.query).toContain('application="ai-service"');
   }
   const aiInstants = queryInstant.mock.calls.map(([request]) => request).filter(request => request.query.includes('ai_request'));
   expect(aiInstants[0].time).toBe(aiInstants[1].time);
+  expect(aiInstants[0].query.replace('_count', '_sum')).toBe(aiInstants[1].query);
+  expect(aiRanges[0].query.replace('_count', '_sum')).toBe(aiRanges[1].query);
   expect(aiRanges[0]).toEqual(expect.objectContaining({ start: aiRanges[1].start, end: aiRanges[1].end, step: aiRanges[1].step }));
   const oldSignal = queryInstant.mock.calls.at(-1)[0].signal;
   for (const [rangeValue, duration] of [['1h', '3600s'], ['6h', '21600s'], ['24h', '86400s']]) {
@@ -91,6 +93,11 @@ test('도메인 탭은 선택 기간의 Saga·AI A30과 응답시간 A31을 조�
       expect(within(screen.getByText('탈퇴 Saga 최종 결과').closest('article')).getAllByText('조회 중')).toHaveLength(3);
     }
     await waitFor(() => expect(queryInstant.mock.calls.some(([request]) => request.query.includes('saga_results_total') && request.query.includes(`[${duration}]`))).toBe(true));
+    const trend = queryRange.mock.calls.map(([request]) => request)
+      .filter(request => request.query.includes('ai_request_seconds_') && request.end - request.start === Number.parseInt(duration, 10));
+    expect(trend).toHaveLength(2);
+    expect(trend.every(request => request.query.includes(rangeValue === '24h' ? '[15m]' : '[5m]'))).toBe(true);
+    expect(trend[0].query.replace('_count', '_sum')).toBe(trend[1].query);
   }
 });
 
@@ -109,7 +116,185 @@ test('도메인 이전 세션의 완전한 AI 쌍도 새 세션에 표시하지 
   view.rerender(<MsaMonitoringDashboard sessionSignal={next.signal} />);
   expect(oldSignal.aborted).toBe(true);
   expect(screen.queryByText('200 ms')).not.toBeInTheDocument();
-  expect(within(screen.getByText('AI 처리 결과').closest('article')).getAllByText('조회 중')).toHaveLength(5);
+  expect(within(screen.getByText('AI 처리 결과').closest('article')).getAllByText('조회 중')).toHaveLength(6);
+});
+
+test('Feign·CB 탭은 실제 A30 조회식을 같은 기간에 요청하고 다른 지표 실패와 분리한다', async () => {
+  const client = 'com.example.sporty.match.integration.MemberClient';
+  queryInstant.mockImplementation(({ query }) => {
+    if (query.includes('sporty_feign_http_requests_seconds_count')) return Promise.resolve([{ metric: { clientName: client, http_status_code: '503' }, value: [100, '2'] }]);
+    if (query.includes('sporty_feign_http_requests_seconds_sum')) return Promise.resolve([{ metric: { clientName: client }, value: [100, '0.4'] }]);
+    if (query.includes('resilience4j_circuitbreaker_state')) return Promise.resolve([{ metric: { name: 'MemberClientgetLong', instance: 'match:8082', state: 'open' }, value: [100, '1'] }]);
+    if (query.includes('resilience4j_circuitbreaker_failure_rate')) return Promise.reject(new Error('offline'));
+    return Promise.resolve([]);
+  });
+  render(<MsaMonitoringDashboard />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Feign · CB' }));
+  await waitFor(() => expect(screen.getByText('OPEN')).toBeInTheDocument());
+  const feign = screen.getByText('OpenFeign HTTP').closest('article');
+  expect(feign).toHaveTextContent('2.0건');
+  expect(feign).toHaveTextContent('100.0%');
+  expect(feign).toHaveTextContent('200 ms');
+  expect(screen.getByText('Circuit Breaker').closest('article')).toHaveTextContent('조회 실패');
+  const requests = queryInstant.mock.calls.map(([request]) => request).filter(request => /sporty_feign_http_requests|resilience4j_circuitbreaker/.test(request.query));
+  expect(requests).toHaveLength(4);
+  expect(requests.every(request => request.query.includes('job="sporty-services"') && request.query.includes('application="match-service"'))).toBe(true);
+  expect(requests.slice(0, 2).every(request => request.query.includes('[900s]'))).toBe(true);
+  expect(requests[0].query.replace('_count', '_sum').replace('clientName, http_status_code', 'clientName')).toBe(requests[1].query);
+  expect(requests[0].time).toBe(requests[1].time);
+  expect(requests[0].query).toContain('clientName=~"com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)"');
+  expect(requests[2].query).toContain('name=~"MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong"');
+});
+
+test('Feign 재조회는 성공 데이터를 유지하고 기간·세션 변경은 이전 응답을 가린다', async () => {
+  const firstSession = new AbortController();
+  const nextSession = new AbortController();
+  const pending = deferred();
+  const client = 'com.example.sporty.match.integration.MemberClient';
+  let countCalls = 0;
+  queryInstant.mockImplementation(({ query }) => {
+    if (query.includes('sporty_feign_http_requests_seconds_count')) {
+      countCalls += 1;
+      return countCalls === 2 ? pending.promise : Promise.resolve([{ metric: { clientName: client, http_status_code: '200' }, value: [100, '2'] }]);
+    }
+    if (query.includes('sporty_feign_http_requests_seconds_sum')) return Promise.resolve([{ metric: { clientName: client }, value: [100, '0.4'] }]);
+    return Promise.resolve([]);
+  });
+  const view = render(<MsaMonitoringDashboard sessionSignal={firstSession.signal} />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Feign · CB' }));
+  await waitFor(() => expect(screen.getByText('OpenFeign HTTP').closest('article')).toHaveTextContent('2.0건'));
+  fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
+  await waitFor(() => expect(countCalls).toBe(2));
+  expect(screen.getByText('OpenFeign HTTP').closest('article')).toHaveTextContent('2.0건');
+  const staleSignal = queryInstant.mock.calls.findLast(([request]) => request.query.includes('sporty_feign_http_requests_seconds_count'))[0].signal;
+  fireEvent.change(screen.getByLabelText('조회 시간'), { target: { value: '1h' } });
+  expect(staleSignal.aborted).toBe(true);
+  expect(screen.getByText('OpenFeign HTTP').closest('article')).not.toHaveTextContent('2.0건');
+  await act(async () => { pending.resolve([{ metric: { clientName: client, http_status_code: '200' }, value: [100, '99'] }]); await settle(); });
+  await waitFor(() => expect(queryInstant.mock.calls.some(([request]) => request.query.includes('sporty_feign_http_requests_seconds_count') && request.query.includes('[3600s]'))).toBe(true));
+  expect(screen.getByText('OpenFeign HTTP').closest('article')).not.toHaveTextContent('99.0건');
+  view.rerender(<MsaMonitoringDashboard sessionSignal={nextSession.signal} />);
+  expect(screen.getByText('OpenFeign HTTP').closest('article')).not.toHaveTextContent('2.0건');
+});
+
+test('Feign 자동 갱신 중 이전 쌍을 유지하고 한쪽 실패에도 이전 성공값을 보존한다', async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-01T05:00:00Z'));
+  const second = deferred();
+  const client = 'com.example.sporty.match.integration.MemberClient';
+  let countCalls = 0;
+  queryInstant.mockImplementation(({ query }) => {
+    if (query.includes('sporty_feign_http_requests_seconds_count')) {
+      countCalls += 1;
+      return countCalls === 2 ? second.promise : Promise.resolve([{ metric: { clientName: client, http_status_code: '200' }, value: [100, '2'] }]);
+    }
+    if (query.includes('sporty_feign_http_requests_seconds_sum')) return Promise.resolve([{ metric: { clientName: client }, value: [100, '0.4'] }]);
+    return Promise.resolve([]);
+  });
+  try {
+    render(<MsaMonitoringDashboard />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Feign · CB' }));
+    await act(settle);
+    expect(screen.getByText('OpenFeign HTTP').closest('article')).toHaveTextContent('2.0건');
+    await act(async () => { jest.advanceTimersByTime(30000); await settle(); });
+    expect(countCalls).toBe(2);
+    expect(screen.getByText('OpenFeign HTTP').closest('article')).toHaveTextContent('2.0건');
+    expect(screen.getByText(/갱신 중 \(기존 측정값 유지\)/)).toBeInTheDocument();
+    await act(async () => { second.reject(new Error('offline')); await settle(); });
+    expect(screen.getByText(/갱신 실패 \(이전 측정값 표시 중\)/)).toBeInTheDocument();
+    expect(screen.getByText('OpenFeign HTTP').closest('article')).toHaveTextContent('2.0건');
+  } finally { jest.useRealTimers(); }
+});
+
+test('Kafka A30·A31은 확인된 Counter·Exporter 계약을 조회하고 정상 지표는 부분 실패와 분리한다', async () => {
+  const topic = 'match.status-changed.v1';
+  queryInstant.mockImplementation(({ query }) => {
+    if (query === 'up{job="kafka-exporter"}') return Promise.resolve([{ metric: { job: 'kafka-exporter' }, value: [100, '1'] }]);
+    if (query.includes('sum by (consumergroup, topic) (kafka_consumergroup_lag')) return Promise.resolve([{ metric: { consumergroup: 'notification-service', topic }, value: [100, '2'] }]);
+    if (query.includes('max by (consumergroup, topic) (kafka_consumergroup_lag')) return Promise.resolve([{ metric: { consumergroup: 'notification-service', topic }, value: [100, '2'] }]);
+    if (query.includes('sporty_kafka_records_processed_total')) return Promise.resolve([{ metric: { topic, group: 'notification-service' }, value: [100, '3.2'] }]);
+    if (query.includes('sporty_kafka_dlt_published_total')) return Promise.reject(new Error('offline'));
+    if (query.includes('kafka_brokers')) return Promise.resolve([{ metric: { job: 'kafka-exporter' }, value: [100, '1'] }]);
+    return Promise.resolve([]);
+  });
+  queryRange.mockImplementation(({ query, end }) => Promise.resolve(query.includes('sporty_kafka_records_processed_total')
+    ? [{ metric: { topic, group: 'notification-service' }, values: [[end, '0.02']] }] : []));
+  render(<MsaMonitoringDashboard />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Kafka' }));
+  await waitFor(() => expect(screen.getByText('Kafka Lag').closest('article')).toHaveTextContent('2건'));
+  expect(screen.getByText('Consumer 처리 성공').closest('article')).toHaveTextContent('3.2건');
+  expect(screen.getByText('Consumer 처리 성공').closest('article')).toHaveTextContent('0.020건/초');
+  expect(screen.getByText('Consumer Group Lag').closest('article')).toHaveTextContent('2건');
+  expect(screen.getByText('DLT 발행 성공').closest('article')).toHaveTextContent('조회 실패');
+  const instantQueries = queryInstant.mock.calls.map(([request]) => request.query);
+  expect(instantQueries).toContain('sum by (consumergroup, topic) (kafka_consumergroup_lag{job="kafka-exporter"})');
+  expect(instantQueries).toContain('max by (consumergroup, topic) (kafka_consumergroup_lag{job="kafka-exporter"})');
+  expect(instantQueries.some(query => query.includes('increase(sporty_kafka_records_processed_total') && query.includes('[900s]'))).toBe(true);
+  expect(instantQueries.some(query => query.includes('increase(sporty_kafka_dlt_published_total') && query.includes('[900s]'))).toBe(true);
+  const ranges = queryRange.mock.calls.map(([request]) => request).filter(request => request.query.includes('sporty_kafka_'));
+  expect(ranges).toHaveLength(2);
+  expect(ranges.every(request => request.query.includes('rate(') && request.query.includes('[5m]') && request.step === 30)).toBe(true);
+});
+
+test('Kafka 기간·탭·세션 변경은 이전 응답을 격리한다', async () => {
+  const first = new AbortController();
+  const next = new AbortController();
+  const old = deferred();
+  const topic = 'match.status-changed.v1';
+  let countCalls = 0;
+  queryInstant.mockImplementation(({ query }) => {
+    if (query === 'up{job="kafka-exporter"}') return Promise.resolve([{ metric: { job: 'kafka-exporter' }, value: [100, '1'] }]);
+    if (query === 'kafka_brokers{job="kafka-exporter"}') return Promise.resolve([{ metric: { job: 'kafka-exporter' }, value: [100, '1'] }]);
+    if (query.includes('sum by (consumergroup, topic) (kafka_consumergroup_lag')) return Promise.resolve([{ metric: { consumergroup: 'notification-service', topic }, value: [100, '0'] }]);
+    if (query.includes('sporty_kafka_records_processed_total')) return ++countCalls === 2 ? old.promise : Promise.resolve([{ metric: { topic, group: 'notification-service' }, value: [100, '2'] }]);
+    return Promise.resolve([]);
+  });
+  const view = render(<MsaMonitoringDashboard sessionSignal={first.signal} />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Kafka' }));
+  await waitFor(() => expect(screen.getByText('Consumer 처리 성공').closest('article')).toHaveTextContent('2.0건'));
+  expect(screen.getByText('Kafka Lag').closest('article')).toHaveTextContent('0건');
+  fireEvent.change(screen.getByLabelText('조회 시간'), { target: { value: '1h' } });
+  expect(screen.getByText('Consumer 처리 성공').closest('article')).not.toHaveTextContent('2.0건');
+  await waitFor(() => expect(countCalls).toBe(2));
+  const staleSignal = queryInstant.mock.calls.findLast(([request]) => request.query.includes('sporty_kafka_records_processed_total'))[0].signal;
+  fireEvent.click(screen.getByRole('tab', { name: '서비스 개요' }));
+  expect(staleSignal.aborted).toBe(true);
+  await act(async () => { old.resolve([{ metric: { topic, group: 'notification-service' }, value: [100, '99'] }]); await settle(); });
+  queryInstant.mockImplementation(() => new Promise(() => {}));
+  view.rerender(<MsaMonitoringDashboard sessionSignal={next.signal} />);
+  expect(screen.getByText('Kafka Lag').closest('article')).not.toHaveTextContent('0건');
+  fireEvent.click(screen.getByRole('tab', { name: 'Kafka' }));
+  expect(screen.getByText('Consumer 처리 성공').closest('article')).not.toHaveTextContent('99.0건');
+});
+
+test('Kafka 자동 갱신 중 성공 데이터를 유지하고 실패 안내를 표시한다', async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-01T05:00:00Z'));
+  const second = deferred();
+  const topic = 'match.status-changed.v1';
+  let countCalls = 0;
+  queryInstant.mockImplementation(({ query }) => {
+    if (query === 'up{job="kafka-exporter"}') return Promise.resolve([{ metric: { job: 'kafka-exporter' }, value: [100, '1'] }]);
+    if (query === 'kafka_brokers{job="kafka-exporter"}') return Promise.resolve([{ metric: { job: 'kafka-exporter' }, value: [100, '1'] }]);
+    if (query.includes('sporty_kafka_records_processed_total')) return ++countCalls === 2 ? second.promise : Promise.resolve([{ metric: { topic, group: 'notification-service' }, value: [100, '2'] }]);
+    return Promise.resolve([]);
+  });
+  try {
+    render(<MsaMonitoringDashboard />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Kafka' }));
+    await act(settle);
+    expect(screen.getByText('Consumer 처리 성공').closest('article')).toHaveTextContent('2.0건');
+    await act(async () => { jest.advanceTimersByTime(30000); await settle(); });
+    expect(countCalls).toBe(2);
+    expect(screen.getByText('Consumer 처리 성공').closest('article')).toHaveTextContent('2.0건');
+    await act(async () => { second.reject(new Error('offline')); await settle(); });
+    expect(screen.getByText(/갱신 실패 \(이전 측정값 표시 중\)/)).toBeInTheDocument();
+    expect(screen.getByText('Consumer 처리 성공').closest('article')).toHaveTextContent('2.0건');
+    fireEvent.click(screen.getByRole('button', { name: /새로고침/ }));
+    await act(settle);
+    expect(countCalls).toBe(3);
+    expect(screen.queryByText(/갱신 실패 \(이전 측정값 표시 중\)/)).not.toBeInTheDocument();
+  } finally { jest.useRealTimers(); }
 });
 
 beforeEach(() => {
@@ -130,7 +315,7 @@ test('진입 즉시 A30·A31의 검증된 up을 조회하고 타깃 부재와 �
   expect(within(rows[3]).getAllByText('미수집').length).toBeGreaterThan(0);
   expect(screen.getByRole('article', { name: '전체 5개 서비스 수집 상태 히트맵' })).toBeInTheDocument();
   expect(screen.getByRole('article', { name: '요청량 RPS 추이' })).toBeInTheDocument();
-  expect(screen.getByText('미연동')).toBeInTheDocument();
+  expect(screen.getByText('Kafka Lag').closest('article')).toHaveTextContent('미수집');
 });
 
 test('0·복수 인스턴스·없는 job은 각기 다른 상태다', () => {
@@ -177,7 +362,7 @@ test('HTTP·JVM 지표는 0, 미수집, 단위와 서비스 레이블을 구분�
 
 test('HTTP 조회식의 모든 Selector는 Actuator를 제외하고 5분 창을 유지한다', async () => {
   render(<MsaMonitoringDashboard />);
-  await waitFor(() => expect(queryInstant).toHaveBeenCalledTimes(9));
+  await waitFor(() => expect(queryInstant).toHaveBeenCalledTimes(12));
   const http = queryInstant.mock.calls.map(([{ query }]) => query)
     .filter(query => query.includes('http_server_requests_seconds_'));
   expect(http).toHaveLength(4);
@@ -286,7 +471,7 @@ test('시간 범위·서비스 필터·새로고침이 실제 조회와 강조 �
   await waitFor(() => expect(queryInstant.mock.calls.length).toBeGreaterThan(previousCalls));
 });
 
-test('5개 탭과 키보드 이동, 미연동 영역, 상세 데이터 펼치기가 동작한다', async () => {
+test('5개 탭과 키보드 이동, Kafka·도메인 영역, 상세 데이터 펼치기가 동작한다', async () => {
   queryInstant.mockResolvedValue([up('user-service', 1)]);
   queryRange.mockResolvedValue([range('user-service', [[100, '1'], [160, '0']])]);
   render(<MsaMonitoringDashboard />);
@@ -296,7 +481,8 @@ test('5개 탭과 키보드 이동, 미연동 영역, 상세 데이터 펼치기
   expect(screen.getByRole('tab', { name: 'Feign · CB' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'msa-tab-feign');
   fireEvent.click(screen.getByRole('tab', { name: 'Kafka' }));
-  expect(screen.getByRole('tabpanel')).toHaveTextContent('미연동');
+  expect(screen.getByRole('tabpanel')).toHaveTextContent('Consumer Group Lag');
+  expect(screen.getByRole('tabpanel')).toHaveTextContent('성공 발행 건수 계측 미확인');
   fireEvent.click(screen.getByRole('tab', { name: '도메인 · AI' }));
   expect(screen.getByRole('tabpanel')).toHaveTextContent('계측 대기');
   fireEvent.click(screen.getByRole('tab', { name: '서비스 개요' }));
@@ -597,7 +783,7 @@ test('30초 Polling은 현재 시각으로 범위를 밀고 OFF·수동 갱신·
     await act(settle);
     const chart = screen.getByRole('article', { name: '요청량 RPS 추이' });
     expect(within(chart).getByText('1.00 RPS')).toBeInTheDocument();
-    expect(queryInstant).toHaveBeenCalledTimes(9);
+    expect(queryInstant).toHaveBeenCalledTimes(12);
     expect(queryRange).toHaveBeenCalledTimes(3);
     const first = queryRange.mock.calls[0][0];
     expect(first.end - first.start).toBe(900);

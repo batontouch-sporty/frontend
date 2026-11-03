@@ -10,9 +10,22 @@ jest.mock('../api/adminApi', () => ({
 }));
 // 기존 인증·통계·수동 조회 회귀 테스트는 신규 자동 조회와 독립적으로 검증한다.
 jest.mock('../components/MsaMonitoringDashboard', () => () => null);
+// Header의 별도 사용자·알림 조회는 관리자 페이지 테스트의 범위 밖이다.
+jest.mock('../../../components/layout/Header', () => () => null);
 
 const userStats = { users: { active: 0, withdrawing: 0, withdrawn: 0 }, withdrawalSaga: { requested: 0, succeeded: 0, rejected: 0, timedOut: 0, inProgress: 0 } };
-const matchStats = { matches: { total: 0, byStatus: { RECRUITING: 0, CLOSED: 0, IN_PROGRESS: 0, COMPLETED: 0, CANCELLED: 0 } }, participants: { total: 0 } };
+const matchStats = { matches: { total: 0, byStatus: { CREATION_PENDING: 0, CREATION_FAILED: 0, RECRUITING: 0, CLOSED: 0, IN_PROGRESS: 0, COMPLETED: 0, CANCELLED: 0 } }, participants: { total: 0 } };
+
+test('R10 생성 대기·실패를 매치 상태에 표시한다', async () => {
+  localStorage.setItem('at', 'token');
+  getCurrentUser.mockResolvedValue(verified());
+  getUserStats.mockResolvedValue(userStats);
+  getMatchStats.mockResolvedValue({ matches: { total: 3, byStatus: { ...matchStats.matches.byStatus, CREATION_PENDING: 1, CREATION_FAILED: 2 } }, participants: { total: 0 } });
+  show();
+  const matches = await screen.findByRole('region', { name: '매치 상태' });
+  await waitFor(() => expect(within(matches).getByText('생성 대기').nextSibling).toHaveTextContent('1'));
+  expect(within(matches).getByText('생성 실패').nextSibling).toHaveTextContent('2');
+});
 const deferred = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const verified = (role = 'ADMIN', token = 'token') => ({ user: { role }, authorization: `Bearer ${token}`, retried: false });
 const changedStorage = key => window.dispatchEvent(new StorageEvent('storage', { key }));
