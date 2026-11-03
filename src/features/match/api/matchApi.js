@@ -23,22 +23,31 @@ const requestError = result => Object.assign(new Error(requestResultMessage(resu
 const TRANSIENT_RETRIES = 3;
 const isTransient = error => Boolean(error?.isAxiosError) && (!error.response || error.response.status >= 500);
 
+// 응답 시간까지 포함해 시작부터 이 시간이 지나면 더 조회하지 않는다.
+export const REQUEST_POLL_TIMEOUT = 59000;
+
 // CONFIRMED면 결과를 반환한다. 실패·취소·시간 초과·조회 실패는 안내 문구와 depositRequest를 담은 Error로 던진다.
-export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_POLL_DELAYS } = {}) {
+export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_POLL_DELAYS, timeout = REQUEST_POLL_TIMEOUT } = {}) {
+  const deadline = Date.now() + timeout;
   let failures = 0;
+  let lastFailed = false;
   for (const delay of delays) {
-    await wait(delay, signal);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await wait(Math.min(delay, remaining), signal);
     let result;
     try { result = await getMatchRequest(requestId, signal); }
     catch (error) {
       if (signal?.aborted) throw error;
-      if (isTransient(error) && failures++ < TRANSIENT_RETRIES) continue;
+      if (isTransient(error) && failures++ < TRANSIENT_RETRIES) { lastFailed = true; continue; }
       throw requestError({ status: 'UNKNOWN' });
     }
+    lastFailed = false;
     if (result.status === 'CONFIRMED') return result;
     if (result.status !== 'PENDING') throw requestError(result);
   }
-  throw requestError({ status: 'PENDING' });
+  // 마지막 조회가 일시 오류였다면 아직 처리 중인지 알 수 없다.
+  throw requestError({ status: lastFailed ? 'UNKNOWN' : 'PENDING' });
 }
 
 // [A9·A14] 보증금 Saga가 켜진 환경은 202 {requestId, matchId, status:'PENDING'}이고 확정까지 상태를 조회한다.

@@ -697,20 +697,38 @@ test.each([
   else expect(screen.queryByText('노쇼')).not.toBeInTheDocument();
 });
 
-test('opens and closes attendance on the start and end times without a reload', async () => {
+test('reloads the detail on the start and end times so attendance and participants stay current', async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date(2026, 10, 3, 9, 59, 30));
+  localStorage.setItem('at', 'token');
+  const before = ownerMatch('2026-11-03T10:00:00', '2026-11-03T12:00:00');
+  const joinedLate = { profileId: 13, participantId: 3, nickname: '늦은참가자', role: 'PARTICIPANT', matchParticipantStatus: 'ATTENDED' };
+  getMatchDetail.mockResolvedValueOnce(before).mockResolvedValue({ ...before, participants: [...before.participants, joinedLate] });
+  showPage();
+  expect(await screen.findByText('시작 후 노쇼를 체크할 수 있어요.')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  act(() => jest.advanceTimersByTime(25000));
+  expect(getMatchDetail).toHaveBeenCalledTimes(1);
+  act(() => jest.advanceTimersByTime(5000));
+  expect(await screen.findByRole('group', { name: '늦은참가자 출석 체크' })).toBeInTheDocument();
+  expect(getMatchDetail).toHaveBeenCalledTimes(2);
+  act(() => jest.advanceTimersByTime(2 * 3600000));
+  expect(await screen.findByText('출석이 확정됐어요.')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  expect(getMatchDetail).toHaveBeenCalledTimes(3);
+});
+
+test('does not reload at the start time after leaving the detail page', async () => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date(2026, 10, 3, 9, 59, 30));
   localStorage.setItem('at', 'token');
   getMatchDetail.mockResolvedValue(ownerMatch('2026-11-03T10:00:00', '2026-11-03T12:00:00'));
-  showPage();
-  expect(await screen.findByText('시작 후 노쇼를 체크할 수 있어요.')).toBeInTheDocument();
-  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
-  act(() => jest.advanceTimersByTime(30000));
-  expect(screen.getByRole('group', { name: '참가자이름 출석 체크' })).toBeInTheDocument();
-  act(() => jest.advanceTimersByTime(2 * 3600000));
-  expect(screen.getByText('출석이 확정됐어요.')).toBeInTheDocument();
-  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  const { unmount } = showPage();
+  await screen.findByText('시작 후 노쇼를 체크할 수 있어요.');
+  unmount();
+  act(() => jest.advanceTimersByTime(60000));
   expect(getMatchDetail).toHaveBeenCalledTimes(1);
+  expect(jest.getTimerCount()).toBe(0);
 });
 
 test('hides attendance controls and guidance for the owner of a cancelled match during its scheduled time', async () => {

@@ -78,13 +78,17 @@ export default function useMainSchedule() {
     }
     joining.current = true;
     setJoins(previous => ({ ...previous, [match.id]: { status: 'joining' } }));
+    const controller = new AbortController();
+    joinRequest.current = controller;
     try {
-      joinRequest.current = new AbortController();
-      await requestMatchParticipation(match.id, { signal: joinRequest.current.signal });
+      await requestMatchParticipation(match.id, { signal: controller.signal });
+      // 화면을 벗어난 뒤 도착한 결과는 목록 재조회·세션 정리 없이 버린다.
+      if (controller.signal.aborted) return false;
       setJoins(previous => ({ ...previous, [match.id]: { status: 'done' } }));
       load({ quiet: true });
       return true;
     } catch (error) {
+      if (controller.signal.aborted) return false;
       setJoins(previous => ({ ...previous, [match.id]: { status: 'error', message: matchRequestError(error, 'join') } }));
       if (error.response?.status === 401) {
         clearSession();

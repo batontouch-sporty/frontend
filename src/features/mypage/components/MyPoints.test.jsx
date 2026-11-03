@@ -75,6 +75,14 @@ test('이력만 실패하면 잔액은 보여 주고 이력 영역에만 오류�
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
+test('잔액 조회가 실패하면 이력 응답을 기다리지 않고 오류를 먼저 보여 준다', async () => {
+  api.get.mockImplementation(url => (url === '/api/users/me/points' ? Promise.reject({ response: { status: 500 } }) : new Promise(() => {})));
+  showPoints();
+  expect(await screen.findByRole('alert')).toHaveTextContent('포인트 정보를 불러오지 못했어요.');
+  expect(screen.queryByText('포인트 정보를 불러오는 중이에요.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
+});
+
 test('미리보기에서는 포인트를 조회하지 않는다', () => {
   render(<MyPoints onUnauthorized={jest.fn()} />);
   expect(screen.getByText('미리보기에서는 포인트를 조회하지 않아요.')).toBeInTheDocument();

@@ -55,3 +55,22 @@ test('화면을 벗어나면 참가 결과 조회를 중단한다', async () => 
   unmount();
   expect(signal.aborted).toBe(true);
 });
+
+test.each([
+  ['성공', resolve => resolve({})],
+  ['401', (resolve, reject) => reject({ response: { status: 401 } })],
+])('화면을 벗어난 뒤 도착한 참가 %s 결과는 목록 재조회·세션 정리 없이 버린다', async (label, settle) => {
+  localStorage.setItem('at', 'token');
+  fetchRecruitingMatches.mockResolvedValue([]);
+  let resolve; let reject;
+  requestMatchParticipation.mockReturnValue(new Promise((ok, fail) => { resolve = ok; reject = fail; }));
+  const { result, unmount } = renderHook(() => useMainSchedule(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('success'));
+  let joined;
+  act(() => { joined = result.current.join({ id: 3 }); });
+  unmount();
+  settle(resolve, reject);
+  await expect(joined).resolves.toBe(false);
+  expect(fetchRecruitingMatches).toHaveBeenCalledTimes(1);
+  expect(localStorage.getItem('at')).toBe('token');
+});

@@ -61,8 +61,9 @@ export default function MyPoints({ loadMyPoints, loadPointHistory, onUnauthorize
 
   const heading = <div className="mypage-schedule-head"><h2 id="my-points-title">내 포인트</h2></div>;
   if (!loadMyPoints) return <section aria-labelledby="my-points-title">{heading}<p className="mypage-empty">미리보기에서는 포인트를 조회하지 않아요.</p></section>;
-  if (loading) return <section aria-labelledby="my-points-title">{heading}<p className="mypage-empty" role="status">포인트 정보를 불러오는 중이에요.</p></section>;
+  // 잔액 오류는 이력 응답을 기다리지 않고 먼저 보여 준다.
   if (error) return <section aria-labelledby="my-points-title">{heading}<div className="mypage-empty"><p role="alert" className="mypage-error">{error}</p><button type="button" className="mypage-retry" onClick={() => setRetry(value => value + 1)}>다시 시도</button></div></section>;
+  if (loading) return <section aria-labelledby="my-points-title">{heading}<p className="mypage-empty" role="status">포인트 정보를 불러오는 중이에요.</p></section>;
 
   // 401은 상위에서 로그인으로 이동한다.
   if (!summary) return <section aria-labelledby="my-points-title">{heading}</section>;
