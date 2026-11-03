@@ -6,15 +6,16 @@ import Header from '../../../components/layout/Header';
 import LogoutButton from '../../auth/components/LogoutButton';
 import { districts, sports } from '../../auth/data/signUpOptions';
 import { previewData } from '../data/previewData';
-import { loadMyPage as fetchMyPage, saveProfile as updateProfile, loadMyMatches as fetchMyMatches } from '../api/myPageApi';
+import { loadMyPage as fetchMyPage, saveProfile as updateProfile, loadMyMatches as fetchMyMatches, loadMyPoints as fetchMyPoints, loadPointHistory as fetchPointHistory } from '../api/myPageApi';
 import WithdrawalButton from '../components/WithdrawalButton';
 import MyMatches from '../components/MyMatches';
+import MyPoints from '../components/MyPoints';
 import '../css/mypage.css';
 
 const copyProfile = profile => ({ ...profile, preferenceSports: [...profile.preferenceSports] });
 
 // [USR-06 / PR-01]
-export default function MyPage({ preview = false, loadMyPage = fetchMyPage, saveProfile = updateProfile, loadMyMatches = fetchMyMatches }) {
+export default function MyPage({ preview = false, loadMyPage = fetchMyPage, saveProfile = updateProfile, loadMyMatches = fetchMyMatches, loadMyPoints = fetchMyPoints, loadPointHistory = fetchPointHistory }) {
   const location = useLocation();
   // [마이페이지] 탭 선택값. 첫 화면은 내 일정이고, 탭 전환 시 수정 중인 폼은 유지한다.
   const [activeTab, setActiveTab] = useState('matches');
@@ -114,13 +115,16 @@ export default function MyPage({ preview = false, loadMyPage = fetchMyPage, save
             </div>
             <nav className="mypage-tabs" aria-label="마이페이지 메뉴">
               <button type="button" aria-current={activeTab === 'matches' ? 'page' : undefined} onClick={() => setActiveTab('matches')}>내 일정</button>
+              <button type="button" aria-current={activeTab === 'points' ? 'page' : undefined} onClick={() => setActiveTab('points')}>포인트</button>
               <button type="button" aria-current={activeTab === 'info' ? 'page' : undefined} onClick={() => setActiveTab('info')}>내 정보</button>
             </nav>
           </div>
         </div>
         <div className="mypage-shell">
           {preview && <p className="mypage-preview">미리보기예요. 변경사항은 서버에 저장되지 않아요.</p>}
-          {activeTab === 'matches' ? <MyMatches loadMyMatches={preview ? undefined : loadMyMatches} onUnauthorized={requireLogin} /> : <div className="mypage-info">
+          {activeTab === 'matches' ? <MyMatches loadMyMatches={preview ? undefined : loadMyMatches} onUnauthorized={requireLogin} />
+            : activeTab === 'points' ? <MyPoints loadMyPoints={preview ? undefined : loadMyPoints} loadPointHistory={loadPointHistory} onUnauthorized={requireLogin} />
+            : <div className="mypage-info">
             <form onSubmit={saveHandler} noValidate aria-busy={pending}>
               <section className="mypage-panel mypage-section" aria-labelledby="profile-heading">
                 <h2 id="profile-heading">프로필 수정</h2>
