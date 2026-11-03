@@ -1,6 +1,6 @@
 import Footer from '../../../components/layout/Footer';
 import Header from '../../../components/layout/Header';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getMatchDetail, joinMatch, leaveMatch, deleteMatch, updateAttendance } from '../api/matchApi';
 import ProfileModal from '../../profiles/components/ProfileModal';
@@ -98,6 +98,20 @@ export default function MatchDetailPage({ previewMatch }) {
     setRetryCount(count => count + 1);
   }
 
+  // 출석 경계 시각의 재조회. 스피너 없이 기존 화면을 둔 채 새 상세로 바꾸고, 실패하면 기존 화면을 유지한다.
+  const silentRequest = useRef(null);
+  const refreshSilently = useCallback(async () => {
+    silentRequest.current?.abort();
+    const controller = new AbortController();
+    silentRequest.current = controller;
+    try {
+      const match = await getMatchDetail(matchId, controller.signal);
+      if (!controller.signal.aborted) setResult({ match, loading: false, error: null });
+    } catch {
+      // 다음 경계나 사용자 동작에서 다시 불러온다.
+    }
+  }, [matchId]);
+
   useEffect(() => {
     if (preview) {
       setResult({ match: previewMatch, loading: false, error: null });
@@ -109,6 +123,7 @@ export default function MatchDetailPage({ previewMatch }) {
     }
     const controller = new AbortController();
     let active = true;
+    silentRequest.current?.abort();
     setResult({ match: null, loading: true, error: null });
 
     async function loadMatch() {
@@ -123,7 +138,7 @@ export default function MatchDetailPage({ previewMatch }) {
     }
     loadMatch();
     // 다른 매치로 이동하면 이전 요청의 결과가 새 화면을 덮지 않게 한다.
-    return () => { active = false; controller.abort(); };
+    return () => { active = false; controller.abort(); silentRequest.current?.abort(); };
   }, [matchId, retryCount, preview, previewMatch]);
 
   const { match, loading, error } = result;
@@ -145,14 +160,14 @@ export default function MatchDetailPage({ previewMatch }) {
             </div>
           </div>}
         </div>}
-        {!loading && !error && match && String(match.matchId) === String(preview ? match.matchId : matchId) && <MatchDetailContent key={`${match.matchId}-${retryCount}`} match={match} preview={preview} onRefresh={refreshMatch} />}
+        {!loading && !error && match && String(match.matchId) === String(preview ? match.matchId : matchId) && <MatchDetailContent key={`${match.matchId}-${retryCount}`} match={match} preview={preview} onRefresh={refreshMatch} onSilentRefresh={refreshSilently} />}
       </main>
       <Footer />
     </div>
   );
 }
   // [PR-02] 선택한 참가자의 프로필 ID. null이면 모달을 닫고, 로그인 안내/조회는 모달이 처리한다.
-function MatchDetailContent({ match, preview, onRefresh }) {
+function MatchDetailContent({ match, preview, onRefresh, onSilentRefresh }) {
   const [selectedProfileId, setSelectedProfileId] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -164,6 +179,10 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const busy = useRef(false);
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; poll.current?.abort(); }; }, []);
+  // 출석 경계 타이머. 처음 예약한 경계를 보존하고, 요청 진행 중에 울리면 끝난 뒤 한 번 재조회한다.
+  const [boundaryTick, setBoundaryTick] = useState(0);
+  const boundary = useRef(null);
+  const refreshLater = useRef(false);
   const login = (message = '참가 신청을 하려면 로그인이 필요해요.') => {
     window.alert(message);
     const from = location.pathname + location.search;
@@ -336,14 +355,27 @@ function MatchDetailContent({ match, preview, onRefresh }) {
     : now < match.startAt.slice(0, 16) ? 'before' : now < match.endAt.slice(0, 16) ? 'open' : 'closed';
   const nextBoundary = { before: match.startAt, open: match.endAt }[attendancePhase]?.slice(0, 16);
   // 화면을 열어 둔 채 시작·종료 시각이 지나면 상세를 다시 불러와 출석 단계와 참가자 목록을 맞춘다.
-  // 재조회는 상위의 상세 조회를 그대로 쓰므로 이전 요청 중단과 해제 후 무시가 함께 적용된다.
   useEffect(() => {
-    if (!nextBoundary || preview) return undefined;
+    if (preview) return undefined;
+    // 경계 직후 다른 이유로 다시 렌더링돼 단계가 먼저 바뀌어도, 처음 예약한 경계의 재조회는 그대로 실행한다.
+    if (!boundary.current) boundary.current = nextBoundary;
+    if (!boundary.current) return undefined;
     // setTimeout 최대 지연(약 24.8일)을 넘으면 그때 한 번 다시 불러와 타이머를 새로 건다.
-    const delay = Math.min(Math.max(0, new Date(nextBoundary) - Date.now()), 2 ** 31 - 1);
-    const timer = setTimeout(onRefresh, delay);
+    const delay = Math.min(Math.max(0, new Date(boundary.current) - Date.now()), 2 ** 31 - 1);
+    const timer = setTimeout(() => {
+      boundary.current = null;
+      if (busy.current) refreshLater.current = true;
+      else onSilentRefresh();
+      setBoundaryTick(value => value + 1);
+    }, delay);
     return () => clearTimeout(timer);
-  }, [nextBoundary, preview, onRefresh]);
+  }, [nextBoundary, preview, onSilentRefresh, boundaryTick]);
+  // 미룬 재조회는 진행 중이던 요청이 끝나면(pending이 비면) 한 번만 실행한다. 성공 시 전체 재조회는 각 동작이 맡는다.
+  useEffect(() => {
+    if (pending !== null || !refreshLater.current) return;
+    refreshLater.current = false;
+    onSilentRefresh();
+  }, [pending, onSilentRefresh]);
   const attendanceNote = { before: '시작 후 노쇼를 체크할 수 있어요.', open: '노쇼한 참가자를 체크해 주세요. 체크하지 않으면 출석으로 확정돼요.', closed: '출석이 확정됐어요.' }[attendancePhase];
   let actionLabel = '참가 신청하기';
   if (match.isOwner === true) actionLabel = pending === 'delete' ? '삭제 중…' : '매치 삭제하기';

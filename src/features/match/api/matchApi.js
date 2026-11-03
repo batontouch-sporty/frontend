@@ -35,6 +35,8 @@ export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
     await wait(Math.min(delay, remaining), signal);
+    // 기다리는 동안 마감이 지났으면 더 조회하지 않고 지금까지의 상태로 끝낸다.
+    if (Date.now() >= deadline) break;
     let result;
     try { result = await getMatchRequest(requestId, signal); }
     catch (error) {
