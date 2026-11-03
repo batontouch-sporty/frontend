@@ -23,8 +23,8 @@ const requestError = result => Object.assign(new Error(requestResultMessage(resu
 const TRANSIENT_RETRIES = 3;
 const isTransient = error => Boolean(error?.isAxiosError) && (!error.response || error.response.status >= 500);
 
-// 응답 시간까지 포함해 시작부터 이 시간이 지나면 더 조회하지 않는다.
-export const REQUEST_POLL_TIMEOUT = 59000;
+// 응답 시간까지 포함해 시작부터 이 시간이 지나면 더 조회하지 않는다. 기본 지연 합(59초)에 1초 여유를 둬 마지막 조회가 빠지지 않게 한다.
+export const REQUEST_POLL_TIMEOUT = 60000;
 
 // CONFIRMED면 결과를 반환한다. 실패·취소·시간 초과·조회 실패는 안내 문구와 depositRequest를 담은 Error로 던진다.
 export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_POLL_DELAYS, timeout = REQUEST_POLL_TIMEOUT } = {}) {

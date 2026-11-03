@@ -158,7 +158,7 @@ test('stops polling at the overall deadline including slow responses', async () 
   now.mockRestore();
   expect(error.message).toContain('처리 결과를 확인하지 못했어요');
   expect(api.get).toHaveBeenCalledTimes(2);
-  expect(REQUEST_POLL_TIMEOUT).toBe(59000);
+  expect(REQUEST_POLL_TIMEOUT).toBe(60000);
 });
 
 test('does not poll when the deadline passes while waiting and keeps the pending result', async () => {
@@ -170,6 +170,17 @@ test('does not poll when the deadline passes while waiting and keeps the pending
   now.mockRestore(); timer.mockRestore();
   expect(error.message).toContain('아직 요청을 처리하고 있어요');
   expect(api.get).toHaveBeenCalledTimes(1);
+});
+
+test('polls through every default delay within the deadline', async () => {
+  let clock = 0;
+  const now = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  const timer = jest.spyOn(global, 'setTimeout').mockImplementation((done, ms) => { clock += ms; done(); return 0; });
+  api.get.mockResolvedValue({ data: pending });
+  const error = await waitForMatchRequest(requestId).catch(caught => caught);
+  now.mockRestore(); timer.mockRestore();
+  expect(error.message).toContain('아직 요청을 처리하고 있어요');
+  expect(api.get).toHaveBeenCalledTimes(REQUEST_POLL_DELAYS.length);
 });
 
 test('stops at once on a malformed status response', async () => {
