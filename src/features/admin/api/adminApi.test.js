@@ -8,7 +8,7 @@ test('A2와 A28·A29는 확정 Gateway 경로와 signal을 사용한다', async 
   const signal = new AbortController().signal;
   api.get.mockResolvedValueOnce({ data: { role: 'ADMIN' }, config: { headers: { Authorization: 'Bearer test-token' }, _retry: true } })
     .mockResolvedValueOnce({ data: { withdrawalSaga: { requested: 0, succeeded: 0, rejected: 0, timedOut: 0, inProgress: 0 }, users: { active: 0, withdrawing: 0, withdrawn: 0 } } })
-    .mockResolvedValueOnce({ data: { matches: { total: 0, byStatus: { RECRUITING: 0, CLOSED: 0, IN_PROGRESS: 0, COMPLETED: 0, CANCELLED: 0 } }, participants: { total: 0 } } });
+    .mockResolvedValueOnce({ data: { matches: { total: 0, byStatus: { CREATION_PENDING: 0, CREATION_FAILED: 0, RECRUITING: 0, CLOSED: 0, IN_PROGRESS: 0, COMPLETED: 0, CANCELLED: 0 } }, participants: { total: 0 } } });
   expect(await getCurrentUser({ signal })).toEqual({ user: { role: 'ADMIN' }, authorization: 'Bearer test-token', retried: true });
   expect((await getUserStats({ signal })).users.active).toBe(0);
   expect((await getMatchStats({ signal })).matches.total).toBe(0);
@@ -22,6 +22,11 @@ test('A2와 A28·A29는 확정 Gateway 경로와 signal을 사용한다', async 
 test('누적 통계의 누락값은 0으로 보정하지 않는다', async () => {
   api.get.mockResolvedValue({ data: { users: { active: 0 } } });
   await expect(getUserStats()).rejects.toThrow('INVALID_USER_STATS');
+  await expect(getMatchStats()).rejects.toThrow('INVALID_MATCH_STATS');
+});
+
+test('R10 매치 생성 상태가 누락된 A29 응답을 거부한다', async () => {
+  api.get.mockResolvedValue({ data: { matches: { total: 0, byStatus: { RECRUITING: 0, CLOSED: 0, IN_PROGRESS: 0, COMPLETED: 0, CANCELLED: 0 } }, participants: { total: 0 } } });
   await expect(getMatchStats()).rejects.toThrow('INVALID_MATCH_STATS');
 });
 

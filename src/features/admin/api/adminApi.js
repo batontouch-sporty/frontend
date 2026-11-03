@@ -26,7 +26,7 @@ export const getMatchStats = ({ signal } = {}) =>
     const matches = data?.matches;
     const statuses = matches?.byStatus;
     if (!count(matches?.total) || !count(data?.participants?.total)
-      || !statuses || !['RECRUITING', 'CLOSED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].every(key => count(statuses[key]))) {
+      || !statuses || !['CREATION_PENDING', 'CREATION_FAILED', 'RECRUITING', 'CLOSED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].every(key => count(statuses[key]))) {
       throw new Error('INVALID_MATCH_STATS');
     }
     return data;

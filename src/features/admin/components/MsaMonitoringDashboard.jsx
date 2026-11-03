@@ -3,6 +3,8 @@ import { queryInstant, queryRange } from '../api/adminApi';
 import { classifyUp, finiteSample, StatusDonut, P95Bars, HttpStatusBars, ResourceGauges, StatusHeatmap } from './MonitoringVisualizations';
 import { PerformanceChart } from './MonitoringTimeSeries';
 import DomainMetrics from './DomainMetrics';
+import FeignMetrics from './FeignMetrics';
+import KafkaMetrics, { lagKpi } from './KafkaMetrics';
 
 const services = [
   ['user-service', '회원 · 인증'],
@@ -25,8 +27,6 @@ const steps = { '15m': 30, '1h': 60, '6h': 300, '24h': 900 };
 const rangeLabels = { '15m': '최근 15분', '1h': '최근 1시간', '6h': '최근 6시간', '24h': '최근 24시간' };
 const timeFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
-const unlinked = '미연동';
-
 const serviceMetric = item => item.metric?.job === 'sporty-services'
   && services.some(([id]) => item.metric.application === id);
 const serviceSeries = (data, selected) => data.filter(item => serviceMetric(item)
@@ -46,13 +46,32 @@ const metricQueries = {
 const domainQueries = range => ({
   saga: `sum by (outcome) (increase(sporty_withdrawal_saga_results_total{job="sporty-services",application="user-service",outcome=~"success|rejected|timed_out"}[${range}]))`,
   late: `sum by (outcome) (increase(sporty_withdrawal_saga_late_results_total{job="sporty-services",application="user-service",outcome=~"cleaned|rejected"}[${range}]))`,
-  aiCount: `sum by (type, outcome) (increase(ai_request_seconds_count{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[${range}]))`,
-  aiSum: `sum by (type, outcome) (increase(ai_request_seconds_sum{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[${range}]))`,
+  aiCount: `sum by (type, outcome) (increase(ai_request_seconds_count{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|rejected|error"}[${range}]))`,
+  aiSum: `sum by (type, outcome) (increase(ai_request_seconds_sum{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|rejected|error"}[${range}]))`,
 });
-const aiTrendQueries = {
-  count: 'sum(rate(ai_request_seconds_count{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[5m]))',
-  sum: 'sum(rate(ai_request_seconds_sum{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|error"}[5m]))',
+const aiTrendQueries = range => {
+  const rateWindow = range === '24h' ? '15m' : '5m';
+  return {
+    count: `sum(rate(ai_request_seconds_count{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|rejected|error"}[${rateWindow}]))`,
+    sum: `sum(rate(ai_request_seconds_sum{job="sporty-services",application="ai-service",type=~"search|draft|recommend",outcome=~"success|fallback|rejected|error"}[${rateWindow}]))`,
+  };
 };
+const feignClient = 'com[.]example[.]sporty[.]match[.]integration[.](MemberClient|FacilityClient)';
+const breakerName = 'MemberClientgetLong|MemberClientprofilesList|FacilityClientgetLong';
+const feignQueries = range => ({
+  count: `sum by (clientName, http_status_code) (increase(sporty_feign_http_requests_seconds_count{job="sporty-services",application="match-service",clientName=~"${feignClient}"}[${range}]))`,
+  sum: `sum by (clientName) (increase(sporty_feign_http_requests_seconds_sum{job="sporty-services",application="match-service",clientName=~"${feignClient}"}[${range}]))`,
+  state: `resilience4j_circuitbreaker_state{job="sporty-services",application="match-service",name=~"${breakerName}"} == 1`,
+  failureRate: `resilience4j_circuitbreaker_failure_rate{job="sporty-services",application="match-service",name=~"${breakerName}"}`,
+});
+const kafkaLagQuery = 'sum by (consumergroup, topic) (kafka_consumergroup_lag{job="kafka-exporter"})';
+const kafkaQueries = range => ({
+  processedCount: `sum by (topic, group) (increase(sporty_kafka_records_processed_total{job="sporty-services",application="notification-service",group="notification-service"}[${range}]))`,
+  processedTrend: 'sum by (topic, group) (rate(sporty_kafka_records_processed_total{job="sporty-services",application="notification-service",group="notification-service"}[5m]))',
+  dltCount: `sum by (topic) (increase(sporty_kafka_dlt_published_total{job="sporty-services",application="notification-service"}[${range}]))`,
+  dltTrend: 'sum by (topic) (rate(sporty_kafka_dlt_published_total{job="sporty-services",application="notification-service"}[5m]))',
+  maxLag: 'max by (consumergroup, topic) (kafka_consumergroup_lag{job="kafka-exporter"})',
+});
 
 // Prometheus 설정의 application 레이블로 비즈니스 서비스를 식별한다.
 const sampleNumber = finiteSample;
@@ -70,13 +89,18 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
   const [updated, setUpdated] = useState(null);
   const [metrics, setMetrics] = useState({});
   const [domain, setDomain] = useState({});
+  const [feign, setFeign] = useState({});
+  const [kafkaLag, setKafkaLag] = useState({ kind: 'loading' });
+  const [exporter, setExporter] = useState({ kind: 'loading' });
+  const [kafkaBrokers, setKafkaBrokers] = useState({ kind: 'loading' });
+  const [kafka, setKafka] = useState({});
   const [completed, setCompleted] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const scope = useRef({ sessionSignal, range, tab });
   const interrupted = useRef(false);
   const currentData = useRef(null);
-  currentData.current = { instant, history, performance, metrics, domain };
+  currentData.current = { instant, history, performance, metrics, domain, feign, kafkaLag, exporter, kafkaBrokers, kafka };
   const sessionChanged = scope.current.sessionSignal !== sessionSignal;
   const rangeChanged = scope.current.range !== range || scope.current.tab !== tab;
 
@@ -87,10 +111,12 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
     let failed = false;
     const sameSession = scope.current.sessionSignal === sessionSignal;
     const sameScope = sameSession && scope.current.range === range && scope.current.tab === tab;
-    const { instant: previousInstant, history: previousHistory, performance: previousPerformance, metrics: previousMetrics, domain: previousDomain } = currentData.current;
-    const retained = sameSession && (previousInstant.kind === 'success' || Object.values(previousMetrics).some(item => item.kind === 'success')
+    const { instant: previousInstant, history: previousHistory, performance: previousPerformance, metrics: previousMetrics, domain: previousDomain, feign: previousFeign, kafkaLag: previousLag, exporter: previousExporter, kafkaBrokers: previousBrokers, kafka: previousKafka } = currentData.current;
+    const retained = sameSession && (previousInstant.kind === 'success' || previousLag.kind === 'success' || previousExporter.kind === 'success' || previousBrokers.kind === 'success' || Object.values(previousMetrics).some(item => item.kind === 'success')
       || (sameScope && (previousHistory.kind === 'success' || previousPerformance.rps.kind === 'success' || previousPerformance.p95.kind === 'success'
-        || Object.values(previousDomain).some(item => item.kind === 'success'))));
+        || Object.values(previousDomain).some(item => item.kind === 'success')
+        || Object.values(previousFeign).some(item => item.kind === 'success')
+        || Object.values(previousKafka).some(item => item.kind === 'success'))));
     scope.current = { sessionSignal, range, tab };
     if (!sameSession) interrupted.current = false;
     const onVisibility = () => {
@@ -106,6 +132,13 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
       ? sameScope && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' } : { kind: 'idle' }])));
     setDomain(current => tab === 'domain' ? Object.fromEntries(['saga', 'late', 'aiCount', 'aiSum', 'trendCount', 'trendSum'].map(key => [key,
       sameScope && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' }])) : {});
+    setFeign(current => tab === 'feign' ? Object.fromEntries(['calls', 'state', 'failureRate'].map(key => [key,
+      sameScope && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' }])) : {});
+    setKafka(current => tab === 'kafka' ? Object.fromEntries(['processedCount', 'processedTrend', 'dltCount', 'dltTrend', 'maxLag'].map(key => [key,
+      sameScope && current[key]?.kind === 'success' ? current[key] : { kind: 'loading' }])) : {});
+    setKafkaLag(current => sameSession && current.kind === 'success' ? current : { kind: 'loading' });
+    setExporter(current => sameSession && current.kind === 'success' ? current : { kind: 'loading' });
+    setKafkaBrokers(current => sameSession && current.kind === 'success' ? current : { kind: 'loading' });
     setCompleted(null);
     setRefreshing(retained);
     setRefreshFailed(false);
@@ -125,6 +158,13 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
         pending.push(queryInstant({ query, signal: controller.signal })
           .then(data => { if (!controller.signal.aborted) setMetrics(current => ({ ...current, [key]: { kind: 'success', data } })); })
           .catch(() => { if (!controller.signal.aborted) { failed = true; setMetrics(current => ({ ...current, [key]: current[key]?.kind === 'success' ? current[key] : { kind: 'error' } })); } }));
+      });
+      [[setKafkaLag, kafkaLagQuery], [setExporter, 'up{job="kafka-exporter"}'], [setKafkaBrokers, 'kafka_brokers{job="kafka-exporter"}']].forEach(([setRequest, query]) => {
+        pending.push(queryInstant({ query, signal: controller.signal })
+          .then(data => { if (!controller.signal.aborted) setRequest({ kind: 'success', data }); })
+          .catch(() => { if (!controller.signal.aborted) { failed = true;
+            setRequest(current => current.kind === 'success' ? current : { kind: 'error' });
+          } }));
       });
       if (tab === 'overview') {
         pending.push(queryRange({ query: 'up', ...window, signal: controller.signal })
@@ -153,14 +193,41 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
             aiSum: current.aiCount?.kind === 'success' && current.aiSum?.kind === 'success' ? current.aiSum : { kind: 'error' },
           })); } }));
         pending.push(Promise.all([
-          queryRange({ query: aiTrendQueries.count, ...window, signal: controller.signal }),
-          queryRange({ query: aiTrendQueries.sum, ...window, signal: controller.signal }),
+          queryRange({ query: aiTrendQueries(range).count, ...window, signal: controller.signal }),
+          queryRange({ query: aiTrendQueries(range).sum, ...window, signal: controller.signal }),
         ]).then(([count, sum]) => { if (!controller.signal.aborted) setDomain(current => ({ ...current,
           trendCount: { kind: 'success', data: count, window }, trendSum: { kind: 'success', data: sum, window } })); })
           .catch(() => { if (!controller.signal.aborted) { failed = true; setDomain(current => ({ ...current,
             trendCount: current.trendCount?.kind === 'success' && current.trendSum?.kind === 'success' ? current.trendCount : { kind: 'error' },
             trendSum: current.trendCount?.kind === 'success' && current.trendSum?.kind === 'success' ? current.trendSum : { kind: 'error' },
           })); } }));
+      }
+      if (tab === 'feign') {
+        const { count, sum, state, failureRate } = feignQueries(`${ranges[range]}s`);
+        pending.push(Promise.all([
+          queryInstant({ query: count, time: end, signal: controller.signal }),
+          queryInstant({ query: sum, time: end, signal: controller.signal }),
+        ]).then(([counts, sums]) => { if (!controller.signal.aborted) setFeign(current => ({ ...current, calls: { kind: 'success', counts, sums } })); })
+          .catch(() => { if (!controller.signal.aborted) { failed = true; setFeign(current => ({ ...current,
+            calls: current.calls?.kind === 'success' ? current.calls : { kind: 'error' },
+          })); } }));
+        [['state', state], ['failureRate', failureRate]].forEach(([key, query]) => {
+          pending.push(queryInstant({ query, signal: controller.signal })
+            .then(data => { if (!controller.signal.aborted) setFeign(current => ({ ...current, [key]: { kind: 'success', data } })); })
+            .catch(() => { if (!controller.signal.aborted) { failed = true; setFeign(current => ({ ...current,
+              [key]: current[key]?.kind === 'success' ? current[key] : { kind: 'error' },
+            })); } }));
+        });
+      }
+      if (tab === 'kafka') {
+        Object.entries(kafkaQueries(`${ranges[range]}s`)).forEach(([key, query]) => {
+          const request = key.endsWith('Trend') ? queryRange({ query, ...window, signal: controller.signal })
+            : queryInstant({ query, time: end, signal: controller.signal });
+          pending.push(request.then(data => { if (!controller.signal.aborted) setKafka(current => ({ ...current, [key]: { kind: 'success', data, ...(key.endsWith('Trend') ? { window } : {}) } })); })
+            .catch(() => { if (!controller.signal.aborted) { failed = true; setKafka(current => ({ ...current,
+              [key]: current[key]?.kind === 'success' ? current[key] : { kind: 'error' },
+            })); } }));
+        });
       }
       Promise.allSettled(pending).then(() => {
         inFlight = false;
@@ -178,6 +245,11 @@ function useUpMetrics(sessionSignal, range, revision, tab) {
     performance: sessionChanged || rangeChanged ? { rps: { kind: 'loading' }, p95: { kind: 'loading' } } : performance,
     metrics: sessionChanged ? {} : metrics,
     domain: sessionChanged || rangeChanged ? {} : domain,
+    feign: sessionChanged || rangeChanged ? {} : feign,
+    kafkaLag: sessionChanged ? { kind: 'loading' } : kafkaLag,
+    exporter: sessionChanged ? { kind: 'loading' } : exporter,
+    kafkaBrokers: sessionChanged ? { kind: 'loading' } : kafkaBrokers,
+    kafka: sessionChanged || rangeChanged ? {} : kafka,
     updated: sessionChanged ? null : updated,
     completed: sessionChanged ? null : completed,
     refreshing, refreshFailed, interrupted,
@@ -234,25 +306,11 @@ function Kpi({ label, value, unit, foot, icon, tone = '' }) {
   </article>;
 }
 
-const unavailableAreas = {
-  feign: ['OpenFeign 호출 시간', 'Circuit Breaker 상태', '호출 관계', 'Feign·Circuit Breaker의 메트릭 이름과 레이블이 아직 실측으로 확인되지 않았습니다.'],
-  kafka: ['Consumer Group Lag', '이벤트 처리량', 'DLT 발행', 'Consumer 중단 중 Lag를 관측할 Exporter와 이벤트 계측이 아직 확인되지 않았습니다.'],
-};
-
-function UnlinkedArea({ tab }) {
-  const [chart, summary, detail, message] = unavailableAreas[tab];
-  return <>
-    <div className="content-grid">
-      <article className="panel chart-card"><div className="chart-header"><div><h3 className="panel-title">{chart}</h3><p className="panel-sub">계측 확인 후 A31 시계열 연결</p></div><span className="chart-key">{unlinked}</span></div><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>메트릭 미연동</div></div></article>
-      <article className="panel"><div className="panel-head"><div><h3 className="panel-title">{summary}</h3><p className="panel-sub">실제 데이터 확인 전까지 값을 표시하지 않습니다.</p></div><span className="tiny-tag">미연동</span></div><div className="info-callout"><strong>계측 대기</strong><br />{message}</div></article>
-    </div>
-    <div className="panel msa-secondary-panel"><h3 className="panel-title">{detail}</h3><p className="panel-sub">해당 지표는 아직 수집되지 않습니다. 메트릭 계측 및 수집 설정을 확인해 주세요.</p><div className="chart-empty"><div><span className="empty-icon" aria-hidden="true">∅</span>데이터 미연동</div></div></div>
-  </>;
-}
-
 function DetailData({ tab, history, selected }) {
   if (tab === 'jvm') return <p>JVM 지표는 A30 현재 값입니다. 시계열은 연결 후 이곳에 표시합니다.</p>;
   if (tab === 'domain') return <p>선택 기간의 Saga·AI 집계와 AI 평균 응답시간 추이는 위 영역에 표시됩니다.</p>;
+  if (tab === 'feign') return <p>선택 기간의 Feign HTTP 지표와 현재 Circuit Breaker 상태는 위 영역에 표시됩니다.</p>;
+  if (tab === 'kafka') return <p>선택 기간의 처리 성공·DLT 발행과 현재 Consumer Lag는 위 영역에 표시됩니다.</p>;
   if (tab !== 'overview') return <p>이 영역의 계측이 확인되지 않아 상세 데이터가 없습니다.</p>;
   if (history.kind === 'loading' || history.kind === 'idle') return <p role="status">시계열을 조회하는 중입니다.</p>;
   if (history.kind === 'error') return <p role="alert">시계열 조회에 실패했습니다.</p>;
@@ -281,7 +339,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
   const [tab, setTab] = useState('overview');
   const [revision, setRevision] = useState(0);
   const [auto, setAuto] = useState(true);
-  const { instant, history, performance, metrics, domain, updated, completed, refreshing, refreshFailed, interrupted } = useUpMetrics(sessionSignal, range, revision, tab);
+  const { instant, history, performance, metrics, domain, feign, kafkaLag, exporter, kafkaBrokers, kafka, updated, completed, refreshing, refreshFailed, interrupted } = useUpMetrics(sessionSignal, range, revision, tab);
   useEffect(() => {
     if (!auto || !completed || document.visibilityState !== 'visible' || sessionSignal?.aborted) return undefined;
     const timer = window.setTimeout(() => setRevision(value => value + 1), Math.max(0, 30000 - (Date.now() - completed.startedAt)));
@@ -347,7 +405,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
         <Kpi label="전체 요청량" value={displayHttp('rps', selected)} icon="↗" foot="최근 5분 평균 · 선택 서비스 합계" />
         <Kpi label="서비스별 최대 P95" value={displayHttp('p95', selected)} icon="◷" foot="최근 5분 · 서비스별 P95 최댓값 · ms" />
         <Kpi label="서비스별 최대 5xx율" value={displayHttp('errors', selected)} icon="!" foot="최근 5분 · 서비스별 5xx 비율 최댓값" />
-        <Kpi label="Kafka Lag" value={unlinked} icon="▤" foot="Consumer Lag Exporter 확인 필요" tone="is-muted" />
+        <Kpi label="Kafka Lag" value={lagKpi(kafkaLag, exporter, kafkaBrokers)} icon="▤" foot="notification-service 그룹 · 전체 토픽 합계" />
       </section>
       <section className="section" aria-label="핵심 지표 그래프"><div className="msa-viz-grid">
         <StatusDonut services={services} statuses={services.map(([id]) => allStatuses[id])} instantKind={instant.kind} />
@@ -369,7 +427,7 @@ export default function MsaMonitoringDashboard({ sessionSignal }) {
             <PerformanceChart metric="p95" request={performance.p95} rpsRequest={performance.rps} services={services} selected={selected} />
           </div>
           <StatusHeatmap services={services} history={history} window={history.window} />
-        </> : tab === 'jvm' ? <JvmArea metrics={metrics} selected={selected} /> : tab === 'domain' ? <DomainMetrics data={domain} rangeLabel={rangeLabels[range]} /> : <UnlinkedArea tab={tab} />}</div>
+        </> : tab === 'jvm' ? <JvmArea metrics={metrics} selected={selected} /> : tab === 'domain' ? <DomainMetrics data={domain} rangeLabel={rangeLabels[range]} rateWindowMinutes={range === '24h' ? 15 : 5} /> : tab === 'feign' ? <FeignMetrics data={feign} rangeLabel={rangeLabels[range]} /> : <KafkaMetrics data={kafka} lag={kafkaLag} exporter={exporter} brokers={kafkaBrokers} rangeLabel={rangeLabels[range]} />}</div>
         <details className="details"><summary>상세 데이터 보기 <span className="tiny-tag">A31</span></summary><div className="details-body">{tab === 'overview' && <p>선택한 영역의 실제 시계열 응답입니다.</p>}<DetailData tab={tab} history={history} selected={selected} /></div></details>
       </section>
     </div>

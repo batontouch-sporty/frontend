@@ -8,7 +8,7 @@ import MsaMonitoringDashboard from '../components/MsaMonitoringDashboard';
 import '../css/adminDashboard.css';
 
 const sagaLabels = { requested: '탈퇴 요청', succeeded: '탈퇴 성공', rejected: '탈퇴 거절', timedOut: '탈퇴 시간 초과', inProgress: '진행 중' };
-const matchLabels = { RECRUITING: '모집 중', CLOSED: '마감', IN_PROGRESS: '진행 중', COMPLETED: '완료', CANCELLED: '취소' };
+const matchLabels = { CREATION_PENDING: '생성 대기', CREATION_FAILED: '생성 실패', RECRUITING: '모집 중', CLOSED: '마감', IN_PROGRESS: '진행 중', COMPLETED: '완료', CANCELLED: '취소' };
 const readSession = () => ({
   at: localStorage.getItem('at')?.trim(),
   rt: localStorage.getItem('rt'),
