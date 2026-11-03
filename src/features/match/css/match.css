@@ -65,6 +65,9 @@
 .match-form .match-results button { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; min-height: 44px; margin-bottom: 4px; padding: 12px; border-radius: var(--radius-field); background: var(--canvas); color: var(--text); text-align: left; }
 .match-form .match-results button:active:not(:disabled) { background: var(--line); }
 .match-results span { font-size: 13px; }
+.match-ai-candidates { margin-top: 12px; }
+.match-ai-candidates h3 { margin: 0; color: var(--text); font-size: 14px; font-weight: 700; }
+.match-ai-candidates .match-results { margin-top: 8px; }
 
 .match-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(140px, calc(50% - 8px)), 1fr)); gap: 16px; }
 .match-control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

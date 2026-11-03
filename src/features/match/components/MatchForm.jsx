@@ -12,7 +12,7 @@ function Step({ number, title, description, children }) {
   </section>;
 }
 
-export default function MatchForm({ initialValues, selectedFacility, searchFacilities, onSubmit, isEdit = false, submitLabel = '매치 개설 완료하기', notice }) {
+export default function MatchForm({ initialValues, selectedFacility, facilityCandidates = [], searchFacilities, onSubmit, isEdit = false, submitLabel = '매치 개설 완료하기', notice }) {
   // 전달받은 initialValues를 최초 마운트 때만 폼 상태로 복사한다. 현재 생성 페이지의 AI 초안 전달은 미연결이다.
   // [AI-03] 생성 담당자는 부모에서 초안 props를 연결하고, 새 초안 적용 시 location.key 등을 key로 사용해 폼을 다시 마운트해야 한다.
   // startAt/endAt → 날짜/시간 입력 분리는 utils/matchValidation.js의 initialMatchValues에서 처리한다.
@@ -122,6 +122,11 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
           <button type="button" className="match-small-button" onClick={search} disabled={searching}>{searching ? '검색 중…' : '시설 검색'}</button>
         </div>
         <p className="match-search-message" role="status">{searchMessage}</p>
+        {/* [AI-01] AI 초안이 추천한 시설 후보. 시설을 고르기 전까지만 보여 주고, 고르면 검색 결과와 같은 방식으로 선택한다. */}
+        {!facility && facilityCandidates.length > 0 && <section className="match-ai-candidates" aria-labelledby="match-ai-candidates-title">
+          <h3 id="match-ai-candidates-title">AI 추천 시설</h3>
+          <ul className="match-results">{facilityCandidates.map(item => <li key={item.serviceId}><button type="button" onClick={() => { setFacility(item); update('serviceId', item.serviceId); setResults([]); setSearchMessage(''); }}><strong>{item.name}</strong><span>{[item.region, item.locationName].filter(Boolean).join(' · ')}</span><span>선택</span></button></li>)}</ul>
+        </section>}
         {results.length > 0 && <ul className="match-results">{results.map(item => <li key={item.serviceId}><button type="button" onClick={() => { setFacility(item); update('serviceId', item.serviceId); setResults([]); setSearchMessage(''); }}><strong>{item.name}</strong><span>{[item.region, item.locationName].filter(Boolean).join(' · ')}</span><span>선택</span></button></li>)}</ul>}
         {facility ? <div className="match-facility"><div><strong>{facility.name}</strong><span className="match-facility-tag">선택한 시설</span><p>{[facility.region, facility.locationName].filter(Boolean).join(' · ')}</p></div><button type="button" onClick={() => { setFacility(null); update('serviceId', ''); }}>선택 해제</button></div> : <p className="match-empty">운동할 체육시설을 선택해 주세요.</p>}
         {errorText('serviceId')}

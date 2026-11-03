@@ -55,6 +55,7 @@ export default function MatchCreatePage({ searchFacilities = searchMatchFaciliti
           key={location.key}        
           onSubmit={handleSubmit}
           selectedFacility={location.state?.facility ?? location.state?.aiDraft?.facility}
+          facilityCandidates={location.state?.facility ? undefined : location.state?.aiDraft?.facilityCandidates}
           searchFacilities={searchFacilities} 
           initialValues={location.state?.aiDraft?.initialValues}
           notice={waiting

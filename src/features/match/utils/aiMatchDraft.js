@@ -29,5 +29,23 @@ export function prepareAiMatchDraft(prompt, result) {
   const facility = result?.facility;
   const selectedFacility = facility && Number.isInteger(facility.serviceId) && facility.serviceId > 0 && typeof facility.name === 'string' ? facility : undefined;
   // 시설명만 추정한 경우 시설 ID를 만들지 않는다. 사용자가 실제 시설을 검색·선택해야 한다.
-  return { prompt, initialValues, facility: selectedFacility, interpreted: result != null };
+  return { prompt, initialValues, facility: selectedFacility, facilityCandidates: toFacilityCandidates(result?.facilityCandidates), interpreted: result != null };
+}
+
+const CANDIDATE_MAX = 5;
+
+// [AI-01] 서버가 초안의 지역·종목으로 찾은 시설 후보(I4, 최대 5개)를 시설 선택 목록 모델로 바꾼다.
+// 응답: [{ id, name, locationName, region, ... }] → 폼: [{ serviceId, name, region, locationName }].
+// 형식이 맞지 않는 항목은 버리고, 후보가 없거나 배열이 아니면 빈 배열이다(초안 자체는 그대로 쓴다).
+export function toFacilityCandidates(candidates) {
+  if (!Array.isArray(candidates)) return [];
+  return candidates
+    .filter(item => item && Number.isInteger(item.id) && item.id > 0 && typeof item.name === 'string' && item.name.trim())
+    .slice(0, CANDIDATE_MAX)
+    .map(item => ({
+      serviceId: item.id,
+      name: item.name,
+      region: typeof item.region === 'string' ? item.region : '',
+      locationName: typeof item.locationName === 'string' ? item.locationName : '',
+    }));
 }
