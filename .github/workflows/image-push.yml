@@ -1,0 +1,65 @@
+name: Image Push
+
+# main에 머지되면 배포용 이미지를 Docker Hub에 올린다. 계정 설정이 없으면 건너뛴다.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  push:
+    name: 이미지 빌드 · push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Docker Hub 설정 확인
+        id: check
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ] || [ -z "$DOCKERHUB_NAMESPACE" ]; then
+            echo "::notice::DOCKERHUB_USERNAME·DOCKERHUB_TOKEN secrets 또는 DOCKERHUB_NAMESPACE vars가 없어 이미지 push를 건너뜁니다."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.enabled == 'true'
+
+      - name: 태그 계산
+        if: steps.check.outputs.enabled == 'true'
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check.outputs.enabled == 'true'
+
+      - name: Docker Hub 로그인
+        if: steps.check.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 빌드 · push
+        if: steps.check.outputs.enabled == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-frontend:${{ steps.tag.outputs.sha }}
+            ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-frontend:latest
