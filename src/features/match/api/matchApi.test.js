@@ -119,13 +119,35 @@ test('stops after the last delay and reports a request that is still pending', a
 });
 
 test('turns a status lookup failure into a guidance error but keeps aborts', async () => {
-  api.get.mockRejectedValue({ response: { status: 404 } });
-  const error = await waitForMatchRequest(requestId, { delays: [0] }).catch(caught => caught);
+  api.get.mockRejectedValue({ response: { status: 404 }, isAxiosError: true });
+  const error = await waitForMatchRequest(requestId, { delays: [0, 0] }).catch(caught => caught);
   expect(error.response).toBeUndefined();
   expect(error.message).toContain('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(1);
   const controller = new AbortController();
   controller.abort();
   await expect(waitForMatchRequest(requestId, { signal: controller.signal, delays: [0] })).rejects.toBe(controller.signal.reason);
+});
+
+test('retries network errors and 5xx on the next delay and returns the confirmed result', async () => {
+  api.get
+    .mockRejectedValueOnce({ response: { status: 503 }, isAxiosError: true })
+    .mockRejectedValueOnce({ isAxiosError: true, code: 'ERR_NETWORK' })
+    .mockResolvedValueOnce({ data: { ...pending, status: 'CONFIRMED' } });
+  await expect(waitForMatchRequest(requestId, { delays: [0, 0, 0, 0] })).resolves.toMatchObject({ status: 'CONFIRMED' });
+  expect(api.get).toHaveBeenCalledTimes(3);
+});
+
+test('gives up after three transient retries', async () => {
+  api.get.mockRejectedValue({ response: { status: 500 }, isAxiosError: true });
+  await expect(waitForMatchRequest(requestId, { delays: [0, 0, 0, 0, 0, 0] })).rejects.toThrow('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(4);
+});
+
+test('stops at once on a malformed status response', async () => {
+  api.get.mockResolvedValue({ data: '<html>frontend fallback</html>' });
+  await expect(waitForMatchRequest(requestId, { delays: [0, 0] })).rejects.toThrow('처리 결과를 확인하지 못했어요');
+  expect(api.get).toHaveBeenCalledTimes(1);
 });
 
 test('uses about one minute of polling by default', () => {

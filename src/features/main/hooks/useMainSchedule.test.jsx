@@ -41,3 +41,17 @@ test('토큰이 없으면 실패를 재시도하지 않고 오류로 둔다', as
   await waitFor(() => expect(result.current.status).toBe('error'));
   expect(fetchRecruitingMatches).toHaveBeenCalledTimes(1);
 });
+
+test('화면을 벗어나면 참가 결과 조회를 중단한다', async () => {
+  localStorage.setItem('at', 'token');
+  fetchRecruitingMatches.mockResolvedValue([]);
+  requestMatchParticipation.mockReturnValue(new Promise(() => {}));
+  const { result, unmount } = renderHook(() => useMainSchedule(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('success'));
+  act(() => { result.current.join({ id: 3 }); });
+  const { signal } = requestMatchParticipation.mock.calls[0][1];
+  expect(requestMatchParticipation).toHaveBeenCalledWith(3, { signal: expect.any(AbortSignal) });
+  expect(signal.aborted).toBe(false);
+  unmount();
+  expect(signal.aborted).toBe(true);
+});

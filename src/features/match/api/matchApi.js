@@ -19,15 +19,20 @@ const wait = (ms, signal) => new Promise((resolve, reject) => {
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
 });
 const requestError = result => Object.assign(new Error(requestResultMessage(result)), { depositRequest: result });
+// 네트워크 오류·5xx는 일시 오류로 보고 이 횟수까지 다음 간격에 다시 조회한다. 4xx·형식 오류는 바로 끝낸다.
+const TRANSIENT_RETRIES = 3;
+const isTransient = error => Boolean(error?.isAxiosError) && (!error.response || error.response.status >= 500);
 
 // CONFIRMED면 결과를 반환한다. 실패·취소·시간 초과·조회 실패는 안내 문구와 depositRequest를 담은 Error로 던진다.
 export async function waitForMatchRequest(requestId, { signal, delays = REQUEST_POLL_DELAYS } = {}) {
+  let failures = 0;
   for (const delay of delays) {
     await wait(delay, signal);
     let result;
     try { result = await getMatchRequest(requestId, signal); }
     catch (error) {
       if (signal?.aborted) throw error;
+      if (isTransient(error) && failures++ < TRANSIENT_RETRIES) continue;
       throw requestError({ status: 'UNKNOWN' });
     }
     if (result.status === 'CONFIRMED') return result;

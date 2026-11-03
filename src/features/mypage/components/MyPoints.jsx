@@ -23,22 +23,28 @@ export default function MyPoints({ loadMyPoints, loadPointHistory, onUnauthorize
   const [loading, setLoading] = useState(Boolean(loadMyPoints));
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [historyError, setHistoryError] = useState('');
   const [moreError, setMoreError] = useState('');
   const [retry, setRetry] = useState(0);
 
+  // 잔액과 이력은 따로 실패한다. 이력만 실패하면 잔액은 보여 주고 이력 영역에만 오류를 띄운다.
   useEffect(() => {
     if (!loadMyPoints) return;
     const controller = new AbortController();
-    setLoading(true); setError('');
-    Promise.all([loadMyPoints({ signal: controller.signal }), loadPointHistory({ page: 0, signal: controller.signal })]).then(([points, page]) => {
+    let unauthorized = false;
+    const fail = (requestError, setMessage, message) => {
       if (controller.signal.aborted) return;
-      setSummary(points);
-      setHistory({ content: page.content || [], page: 0, totalPages: page.totalPages || 0 });
-    }).catch(requestError => {
-      if (controller.signal.aborted) return;
-      if (requestError.response?.status === 401) onUnauthorized();
-      else setError('포인트 정보를 불러오지 못했어요.');
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      if (requestError.response?.status !== 401) setMessage(message);
+      else if (!unauthorized) { unauthorized = true; onUnauthorized(); }
+    };
+    setLoading(true); setError(''); setHistoryError('');
+    Promise.all([
+      loadMyPoints({ signal: controller.signal }).then(points => { if (!controller.signal.aborted) setSummary(points); })
+        .catch(requestError => fail(requestError, setError, '포인트 정보를 불러오지 못했어요.')),
+      loadPointHistory({ page: 0, signal: controller.signal }).then(page => {
+        if (!controller.signal.aborted) setHistory({ content: page.content || [], page: 0, totalPages: page.totalPages || 0 });
+      }).catch(requestError => fail(requestError, setHistoryError, '포인트 이력을 불러오지 못했어요.')),
+    ]).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [loadMyPoints, loadPointHistory, onUnauthorized, retry]);
 
@@ -71,13 +77,14 @@ export default function MyPoints({ loadMyPoints, loadPointHistory, onUnauthorize
         : <dd>참여 가능</dd>}</div>
     </dl>
     <h3 className="mypage-points-title">포인트 이력</h3>
-    {history.content.length === 0 ? <p className="mypage-empty">포인트 이력이 없어요.</p> : <ul className="mypage-panel mypage-point-history">
+    {historyError ? <div className="mypage-empty"><p role="alert" className="mypage-error">{historyError}</p><button type="button" className="mypage-retry" onClick={() => setRetry(value => value + 1)}>다시 시도</button></div>
+      : history.content.length === 0 ? <p className="mypage-empty">포인트 이력이 없어요.</p> : <ul className="mypage-panel mypage-point-history">
       {history.content.map(entry => <li key={entry.id}>
         <div><strong>{REASONS[entry.reason] || '포인트 변동'}</strong><span>{dateTimeLabel(entry.createdAt)}</span></div>
         <div><strong className={entry.delta < 0 ? 'is-minus' : undefined}>{deltaLabel(entry.delta)}</strong><span>잔액 {entry.afterPoints}점</span></div>
       </li>)}
     </ul>}
     {moreError && <p role="alert" className="mypage-error">{moreError}</p>}
-    {history.page + 1 < history.totalPages && <button type="button" className="mypage-retry mypage-points-more" disabled={loadingMore} onClick={loadMore}>{loadingMore ? '불러오는 중…' : '이력 더 보기'}</button>}
+    {!historyError && history.page + 1 < history.totalPages && <button type="button" className="mypage-retry mypage-points-more" disabled={loadingMore} onClick={loadMore}>{loadingMore ? '불러오는 중…' : '이력 더 보기'}</button>}
   </section>;
 }

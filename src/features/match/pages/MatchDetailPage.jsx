@@ -164,6 +164,8 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const busy = useRef(false);
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; poll.current?.abort(); }; }, []);
+  // 출석 단계가 화면을 연 채로도 바뀌도록 현재 시각(분)을 상태로 두고, 다음 경계 시각에 한 번 갱신한다.
+  const [now, setNow] = useState(() => localDateTime().slice(0, 16));
   const login = (message = '참가 신청을 하려면 로그인이 필요해요.') => {
     window.alert(message);
     const from = location.pathname + location.search;
@@ -331,9 +333,16 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const status = { RECRUITING: '모집 중', CLOSED: '모집 마감' }[match.status] || '상태 정보 없음';
   const schedule = `${dateLabel(match.startAt)} ${timeLabel(match.startAt)} — ${match.startAt?.slice(0, 10) !== match.endAt?.slice(0, 10) ? `${dateLabel(match.endAt)} ` : ''}${timeLabel(match.endAt)}`;
   // 출석은 시작 시각 이상, 종료 시각 미만에만 바꿀 수 있다. 서버 LocalDateTime과 같은 분 단위로 비교한다.
-  const now = localDateTime().slice(0, 16);
   const attendancePhase = match.status === 'CANCELLED' || match.isOwner !== true || !match.startAt || !match.endAt ? null
     : now < match.startAt.slice(0, 16) ? 'before' : now < match.endAt.slice(0, 16) ? 'open' : 'closed';
+  const nextBoundary = { before: match.startAt, open: match.endAt }[attendancePhase]?.slice(0, 16);
+  useEffect(() => {
+    if (!nextBoundary) return undefined;
+    // setTimeout 최대 지연(약 24.8일)을 넘으면 중간에 한 번 깨어나 다시 건다.
+    const delay = Math.min(Math.max(0, new Date(nextBoundary) - Date.now()), 2 ** 31 - 1);
+    const timer = setTimeout(() => setNow(localDateTime().slice(0, 16)), delay);
+    return () => clearTimeout(timer);
+  }, [nextBoundary, now]);
   const attendanceNote = { before: '시작 후 노쇼를 체크할 수 있어요.', open: '노쇼한 참가자를 체크해 주세요. 체크하지 않으면 출석으로 확정돼요.', closed: '출석이 확정됐어요.' }[attendancePhase];
   let actionLabel = '참가 신청하기';
   if (match.isOwner === true) actionLabel = pending === 'delete' ? '삭제 중…' : '매치 삭제하기';

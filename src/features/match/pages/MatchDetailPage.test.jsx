@@ -24,7 +24,7 @@ const match = {
 
 beforeEach(() => jest.spyOn(window, 'alert').mockImplementation(() => {}));
 beforeEach(() => jest.spyOn(window, 'confirm').mockReturnValue(true));
-afterEach(() => { jest.resetAllMocks(); jest.restoreAllMocks(); localStorage.clear(); });
+afterEach(() => { jest.useRealTimers(); jest.resetAllMocks(); jest.restoreAllMocks(); localStorage.clear(); });
 
 function LoginDestination() {
   const location = useLocation();
@@ -695,6 +695,22 @@ test.each([
   expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
   if (when === 'after') expect(screen.getByText('노쇼')).toHaveClass('detail-attendance-final');
   else expect(screen.queryByText('노쇼')).not.toBeInTheDocument();
+});
+
+test('opens and closes attendance on the start and end times without a reload', async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date(2026, 10, 3, 9, 59, 30));
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(ownerMatch('2026-11-03T10:00:00', '2026-11-03T12:00:00'));
+  showPage();
+  expect(await screen.findByText('시작 후 노쇼를 체크할 수 있어요.')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  act(() => jest.advanceTimersByTime(30000));
+  expect(screen.getByRole('group', { name: '참가자이름 출석 체크' })).toBeInTheDocument();
+  act(() => jest.advanceTimersByTime(2 * 3600000));
+  expect(screen.getByText('출석이 확정됐어요.')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  expect(getMatchDetail).toHaveBeenCalledTimes(1);
 });
 
 test('hides attendance controls and guidance for the owner of a cancelled match during its scheduled time', async () => {

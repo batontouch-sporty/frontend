@@ -22,6 +22,7 @@ export default function useMainSchedule() {
   const [mobile, setMobile] = useState(isMobile);
   const joining = useRef(false);
   const request = useRef(null);
+  const joinRequest = useRef(null);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
     request.current?.abort();
@@ -46,6 +47,9 @@ export default function useMainSchedule() {
     load();
     return () => request.current?.abort();
   }, [load]);
+
+  // 화면을 벗어나면 참가 결과 조회를 멈춘다.
+  useEffect(() => () => joinRequest.current?.abort(), []);
 
   // 프로필 조회가 실패해도 보드는 서울 전체로 보여 준다. 공개 페이지라 로그인으로 보내지 않는다.
   useEffect(() => {
@@ -75,7 +79,8 @@ export default function useMainSchedule() {
     joining.current = true;
     setJoins(previous => ({ ...previous, [match.id]: { status: 'joining' } }));
     try {
-      await requestMatchParticipation(match.id);
+      joinRequest.current = new AbortController();
+      await requestMatchParticipation(match.id, { signal: joinRequest.current.signal });
       setJoins(previous => ({ ...previous, [match.id]: { status: 'done' } }));
       load({ quiet: true });
       return true;
