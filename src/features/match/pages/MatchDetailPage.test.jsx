@@ -4,9 +4,10 @@ import MatchDetailPage from './MatchDetailPage';
 import MatchDetailPreviewPage from './MatchDetailPreviewPage';
 import LoginPage from '../../auth/pages/LoginPage';
 import api from '../../../api/axios';
-import { getMatchDetail, joinMatch, leaveMatch, deleteMatch } from '../api/matchApi';
+import { getMatchDetail, joinMatch, leaveMatch, deleteMatch, updateAttendance } from '../api/matchApi';
+import { localDateTime } from '../../main/utils/schedule';
 
-jest.mock('../api/matchApi', () => ({ getMatchDetail: jest.fn(), joinMatch: jest.fn(), leaveMatch: jest.fn(), deleteMatch: jest.fn() }));
+jest.mock('../api/matchApi', () => ({ getMatchDetail: jest.fn(), joinMatch: jest.fn(), leaveMatch: jest.fn(), deleteMatch: jest.fn(), updateAttendance: jest.fn() }));
 jest.mock('../../../api/axios', () => ({ post: jest.fn(), get: jest.fn() }));
 
 const match = {
@@ -634,4 +635,72 @@ test('refreshes when leaving after the match has started', async () => {
   fireEvent.click(await screen.findByRole('button', { name: '매치 탈퇴하기' }));
   await waitFor(() => expect(window.alert).toHaveBeenCalledWith('이미 시작된 매치는 취소할 수 없어요.'));
   await waitFor(() => expect(getMatchDetail).toHaveBeenCalledTimes(2));
+});
+
+const hoursFromNow = hours => localDateTime(new Date(Date.now() + hours * 3600000));
+const ownerMatch = (startAt, endAt, attendance = 'ATTENDED') => ({
+  ...match, isOwner: true, startAt, endAt,
+  participants: [
+    { profileId: 11, participantId: 1, nickname: '생성자', role: 'OWNER', attendance: 'ATTENDED' },
+    { profileId: 12, participantId: 2, nickname: '참가자이름', role: 'PARTICIPANT', attendance },
+  ],
+});
+
+test('lets the owner mark a no-show during the match and refreshes after saving', async () => {
+  localStorage.setItem('at', 'token');
+  const live = ownerMatch(hoursFromNow(-1), hoursFromNow(1));
+  getMatchDetail.mockResolvedValueOnce(live).mockResolvedValueOnce(ownerMatch(live.startAt, live.endAt, 'NO_SHOW'));
+  updateAttendance.mockResolvedValue({ participantId: 2, userId: 9, attendance: 'NO_SHOW' });
+  showPage();
+  const row = await screen.findByRole('group', { name: '참가자이름 출석 체크' });
+  expect(screen.getByRole('group', { name: '생성자 출석 체크' })).toBeInTheDocument();
+  expect(within(row).getByRole('button', { name: '출석' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(within(row).getByRole('button', { name: '노쇼' }));
+  expect(window.confirm).toHaveBeenCalledWith('노쇼로 체크하면 이 참가자의 보증 포인트 10점은 반환되지 않아요. 노쇼로 체크할까요?');
+  expect(updateAttendance).toHaveBeenCalledWith(101, 2, 'NO_SHOW');
+  await waitFor(() => expect(within(screen.getByRole('group', { name: '참가자이름 출석 체크' })).getByRole('button', { name: '노쇼' })).toHaveAttribute('aria-pressed', 'true'));
+  expect(getMatchDetail).toHaveBeenCalledTimes(2);
+});
+
+test('does not save a no-show when the owner cancels the confirmation', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(ownerMatch(hoursFromNow(-1), hoursFromNow(1)));
+  window.confirm.mockReturnValue(false);
+  showPage();
+  const row = await screen.findByRole('group', { name: '참가자이름 출석 체크' });
+  fireEvent.click(within(row).getByRole('button', { name: '노쇼' }));
+  fireEvent.click(within(row).getByRole('button', { name: '출석' }));
+  expect(updateAttendance).not.toHaveBeenCalled();
+});
+
+test('explains a closed attendance window from the server', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(ownerMatch(hoursFromNow(-1), hoursFromNow(1), 'NO_SHOW'));
+  updateAttendance.mockRejectedValue({ response: { status: 400, data: { code: 'ATTENDANCE_NOT_EDITABLE' } } });
+  showPage();
+  const row = await screen.findByRole('group', { name: '참가자이름 출석 체크' });
+  fireEvent.click(within(row).getByRole('button', { name: '출석' }));
+  await waitFor(() => expect(window.alert).toHaveBeenCalledWith('지금은 출석을 바꿀 수 없어요.'));
+  await waitFor(() => expect(getMatchDetail).toHaveBeenCalledTimes(2));
+});
+
+test.each([
+  ['before', 1, 2, '시작 후 노쇼를 체크할 수 있어요.'],
+  ['after', -3, -1, '출석이 확정됐어요.'],
+])('shows only the attendance state %s the match', async (when, start, end, note) => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(ownerMatch(hoursFromNow(start), hoursFromNow(end), 'NO_SHOW'));
+  showPage();
+  expect(await screen.findByText(note)).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  if (when === 'after') expect(screen.getByText('노쇼')).toHaveClass('detail-attendance-final');
+  else expect(screen.queryByText('노쇼')).not.toBeInTheDocument();
+});
+
+test('hides attendance controls from participants', async () => {
+  getMatchDetail.mockResolvedValue({ ...ownerMatch(hoursFromNow(-1), hoursFromNow(1)), isOwner: false, isParticipant: true });
+  showPage();
+  await screen.findByRole('heading', { name: match.title });
+  expect(screen.queryByRole('group', { name: /출석 체크/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/노쇼를 체크/)).not.toBeInTheDocument();
 });

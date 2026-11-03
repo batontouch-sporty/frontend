@@ -2,11 +2,12 @@ import Footer from '../../../components/layout/Footer';
 import Header from '../../../components/layout/Header';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { getMatchDetail, joinMatch, leaveMatch, deleteMatch } from '../api/matchApi';
+import { getMatchDetail, joinMatch, leaveMatch, deleteMatch, updateAttendance } from '../api/matchApi';
 import ProfileModal from '../../profiles/components/ProfileModal';
 import WaitlistActions from '../components/WaitlistActions';
 import { SKILL_LABELS as LEVELS } from '../../../constants/skillLevels';
 import { DEPOSIT_POINTS, depositErrorMessage } from '../utils/depositMessages';
+import { localDateTime } from '../../main/utils/schedule';
 import '../css/match.css';
 import '../css/matchDetail.css';
 
@@ -54,7 +55,22 @@ function Avatar({ participant }) {
   );
 }
 
-function Participant({ participant, preview, onProfileClick }) {
+const ATTENDANCE_LABELS = { ATTENDED: '출석', NO_SHOW: '노쇼' };
+
+// [출석] 방장 화면에서만 attendance 값이 온다. 진행 중이면 토글, 종료 후에는 확정 값만 보여 준다.
+function AttendanceControl({ participant, phase, disabled, onChange }) {
+  if (!Number.isSafeInteger(participant.participantId) || !ATTENDANCE_LABELS[participant.attendance]) return null;
+  if (phase === 'closed') return <span className="detail-attendance-final">{ATTENDANCE_LABELS[participant.attendance]}</span>;
+  if (phase !== 'open') return null;
+  const name = participant.nickname || '참가자';
+  return <div className="detail-attendance" role="group" aria-label={`${name} 출석 체크`}>
+    {Object.entries(ATTENDANCE_LABELS).map(([value, label]) => <button key={value} type="button"
+      className={participant.attendance === value ? 'is-selected' : undefined} aria-pressed={participant.attendance === value}
+      disabled={disabled} onClick={() => onChange(participant, value)}>{label}</button>)}
+  </div>;
+}
+
+function Participant({ participant, preview, onProfileClick, attendance }) {
   const name = participant.nickname || '프로필 정보 없음';
   return (
     <li className={`detail-person ${participant.role === 'OWNER' ? 'detail-person-owner' : ''}`}>
@@ -66,6 +82,7 @@ function Participant({ participant, preview, onProfileClick }) {
         <span className="detail-person-role">{participant.role === 'OWNER' ? '매치 생성자' : '참가자'}</span>
       </div>
       {participant.role === 'OWNER' && <span className="detail-tag">개설자</span>}
+      {attendance}
     </li>
   );
 }
@@ -205,6 +222,39 @@ function MatchDetailContent({ match, preview, onRefresh }) {
     }
   }
 
+  async function handleAttendance(person, attendance) {
+    if (preview || busy.current || person.attendance === attendance) return;
+    if (attendance === 'NO_SHOW' && !window.confirm(`노쇼로 체크하면 이 참가자의 보증 포인트 ${DEPOSIT_POINTS}점은 반환되지 않아요. 노쇼로 체크할까요?`)) return;
+    busy.current = true; setPending('attendance'); setActionError('');
+    try {
+      await updateAttendance(match.matchId, person.participantId, attendance);
+      if (!active.current) return;
+      onRefresh();
+    } catch (error) {
+      if (!active.current) return;
+      const statusCode = error.response?.status;
+      const code = error.response?.data?.code;
+      if (statusCode === 401) {
+        localStorage.removeItem('at');
+        login('인증이 만료됐어요. 다시 로그인해 주세요.');
+        return;
+      }
+      const reasons = {
+        ATTENDANCE_NOT_EDITABLE: '지금은 출석을 바꿀 수 없어요.',
+        FORBIDDEN: '출석을 바꿀 권한이 없어요.',
+        PARTICIPANT_NOT_FOUND: '참가자 정보를 찾을 수 없어요. 현재 상태를 다시 불러올게요.',
+      };
+      if (reasons[code]) {
+        window.alert(reasons[code]);
+        onRefresh();
+        return;
+      }
+      setActionError('출석 변경 결과를 확인하지 못했어요. 새로고침 후 확인해 주세요.');
+      busy.current = false;
+      setPending(null);
+    }
+  }
+
   async function performAction(action) {
     if (preview || busy.current) return;
     if (action === 'delete' ? match.isOwner !== true : match.isOwner === true || match.isParticipant === true || match.status !== 'RECRUITING' || remaining === 0) return;
@@ -280,6 +330,11 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const place = [match.region, match.locationName].filter(Boolean).join(' · ') || '장소 정보 없음';
   const status = { RECRUITING: '모집 중', CLOSED: '모집 마감' }[match.status] || '상태 정보 없음';
   const schedule = `${dateLabel(match.startAt)} ${timeLabel(match.startAt)} — ${match.startAt?.slice(0, 10) !== match.endAt?.slice(0, 10) ? `${dateLabel(match.endAt)} ` : ''}${timeLabel(match.endAt)}`;
+  // 출석은 시작 시각 이상, 종료 시각 미만에만 바꿀 수 있다. 서버 LocalDateTime과 같은 분 단위로 비교한다.
+  const now = localDateTime().slice(0, 16);
+  const attendancePhase = match.isOwner !== true || !match.startAt || !match.endAt ? null
+    : now < match.startAt.slice(0, 16) ? 'before' : now < match.endAt.slice(0, 16) ? 'open' : 'closed';
+  const attendanceNote = { before: '시작 후 노쇼를 체크할 수 있어요.', open: '노쇼한 참가자를 체크해 주세요. 체크하지 않으면 출석으로 확정돼요.', closed: '출석이 확정됐어요.' }[attendancePhase];
   let actionLabel = '참가 신청하기';
   if (match.isOwner === true) actionLabel = pending === 'delete' ? '삭제 중…' : '매치 삭제하기';
   else if (match.isParticipant === true) actionLabel = pending === 'leave' ? '탈퇴 중…' : '매치 탈퇴하기';
@@ -311,8 +366,10 @@ function MatchDetailContent({ match, preview, onRefresh }) {
         <div className="detail-sections">
           <section className="detail-section" aria-labelledby="detail-participants-title">
             <div className="detail-section-title"><h2 id="detail-participants-title">참가자</h2><span>{current === null ? '인원 정보 없음' : `${current}명 참여 중`}</span></div>
-            {participants === null ? <p className="detail-empty">참가자 정보를 확인할 수 없어요.</p> : participants.length === 0 ? <p className="detail-empty">아직 참여한 사람이 없어요.</p> : <ul className="detail-people">
-              {[...owners, ...members].map((person, index) => <Participant key={person.profileId ?? `person-${index}`} participant={person} preview={preview} onProfileClick={setSelectedProfileId} />)}
+            {attendanceNote && !preview && participants?.length > 0 && <p className="detail-attendance-note">{attendanceNote}</p>}
+            {participants === null ? <p className="detail-empty">참가자 정보를 확인할 수 없어요.</p> : participants.length === 0 ? <p className="detail-empty">아직 참여한 사람이 없어요.</p> : <ul className={`detail-people${attendancePhase === 'open' && !preview ? ' is-attendance' : ''}`}>
+              {[...owners, ...members].map((person, index) => <Participant key={person.profileId ?? `person-${index}`} participant={person} preview={preview} onProfileClick={setSelectedProfileId}
+                attendance={!preview && attendancePhase && <AttendanceControl participant={person} phase={attendancePhase} disabled={pending !== null} onChange={handleAttendance} />} />)}
             </ul>}
           </section>
           <section className="detail-section" aria-labelledby="detail-summary-title">
