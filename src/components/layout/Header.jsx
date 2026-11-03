@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { fetchUnreadCount, NOTIFICATIONS_CHANGED } from '../../features/notifications/api/notificationApi';
 import headerSearch from './assets/header-search.svg';
+import sportyLogo from './assets/sporty-logo.svg';
 import './header.css';
 
 const readSession = () => ({
@@ -107,7 +108,7 @@ export default function Header({ children, onFacilitySearch }) {
         <header className={`sporty-header${showAdmin ? ' sporty-header--admin' : ''}`}>
             <div className="sporty-header-container sporty-header-inner">
                 <Link className="sporty-header-brand" to="/" aria-label="Sporty 홈">
-                    <span>Sporty</span>
+                    <img className="sporty-header-logo" src={sportyLogo} alt="SPORTYⅡ" width="142" height="44" />
                 </Link>
                 <nav className="sporty-header-nav" aria-label="주 메뉴">
                     <NavLink to="/matches/search">매치 찾기</NavLink>

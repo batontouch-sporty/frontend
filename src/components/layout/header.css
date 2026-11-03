@@ -6,7 +6,7 @@
 .sporty-header-container { width: min(100%, 1200px); padding-inline: 24px; margin-inline: auto; }
 .sporty-header-inner { min-height: 68px; display: flex; align-items: center; gap: 28px; }
 .sporty-header .sporty-header-brand { display: inline-flex; align-items: center; min-height: 44px; color: var(--on-ink); font-size: 22px; font-weight: 700; letter-spacing: -.5px; white-space: nowrap; }
-.sporty-header-brand span::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 3px; border-radius: 50%; background: var(--volt); }
+.sporty-header-logo { display: block; width: 142px; height: 44px; }
 .sporty-header-nav { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .sporty-header .sporty-header-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: var(--radius-field); color: var(--on-ink-muted); font-weight: 500; white-space: nowrap; }
 .sporty-header .sporty-header-nav a.active { color: var(--volt); }
