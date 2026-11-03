@@ -10,9 +10,10 @@ on:
 permissions:
   contents: read
 
+# 커밋마다 따로 실행해 대기 중인 실행이 취소되지 않게 한다(커밋별 <sha7> 이미지 보존).
+# latest는 아래에서 main 최신 커밋일 때만 올려 순서가 뒤집히지 않게 한다.
 concurrency:
-  group: image-push-${{ github.ref }}
-  # 진행 중인 빌드는 끝까지 올려 커밋별 <sha7> 이미지를 남기고, latest 갱신 순서를 지킨다.
+  group: image-push-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -54,7 +55,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # latest는 main에서만 올린다. 다른 브랜치 수동 실행은 <sha7>만 올린다.
+      - name: main 최신 커밋인지 확인
+        id: head
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          if [ "$GITHUB_REF" = refs/heads/main ] && [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # latest는 main 최신 커밋일 때만 올린다. 다른 브랜치나 이미 지난 커밋은 <sha7>만 올린다.
       - name: 빌드 · push
         if: steps.check.outputs.enabled == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -64,4 +75,4 @@ jobs:
           push: true
           tags: |
             ${{ vars.DOCKERHUB_NAMESPACE }}/sporty-frontend:${{ steps.tag.outputs.sha }}
-            ${{ github.ref == 'refs/heads/main' && format('{0}/sporty-frontend:latest', vars.DOCKERHUB_NAMESPACE) || '' }}
+            ${{ steps.head.outputs.latest == 'true' && format('{0}/sporty-frontend:latest', vars.DOCKERHUB_NAMESPACE) || '' }}
